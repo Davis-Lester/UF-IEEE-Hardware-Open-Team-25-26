@@ -1,0 +1,14 @@
+# Goal
+float64 target_ticks
+float64 target_angle
+string mode  # "DRIVE" or "TURN"
+int32 max_speed
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+float64 current_error
