@@ -11,7 +11,7 @@
 //╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╭━╯┃
 //╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╰━━╯
 
-#include "MPU6050.h"
+#include "hardware_team_robot/sensors/MPU6050.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
