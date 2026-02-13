@@ -3,8 +3,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
-#include "Hardware_Team_Robot/action/drive.hpp"
-#include "Hardware_Team_Robot/MPU6050.h" 
+#include "hardware_team_robot/action/drive.hpp" //THIS FILE NEEDS TO BE ADDED
+#include "hardware_team_robot/sensors/MPU6050.h" 
 #include <pigpio.h>
 #include <atomic>
 

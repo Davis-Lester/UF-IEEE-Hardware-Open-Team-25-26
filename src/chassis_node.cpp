@@ -2,7 +2,7 @@
 // Date: 2/5/2026
 // Description: Mecanum Drive PID Chassis Node (4 Motor / 4 Encoder)
 
-#include "../include/Hardware_Team_Robot/chassis_node.h"
+#include "hardware_team_robot/chassis_node.h"
 #include <cmath>
 #include <algorithm>
 #include <thread>

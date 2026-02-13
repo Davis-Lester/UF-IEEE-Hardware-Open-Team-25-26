@@ -2,7 +2,7 @@
 // Date: 2/5/2026
 // Description: Creating a Color Sensor Library for a ROS2 Robot
 
-#include "Hardware_Team_Robot/GY31.h"
+#include "hardware_team_robot/sensors/GY31.h"
 #include <pigpio.h>
 #include <unistd.h> // for usleep
 #include <algorithm> // for std::clamp
@@ -53,8 +53,9 @@ void GY31::pulseISR(int gpio, int level, uint32_t tick, void* user) {
     sensor->handlePulse();
 }
 
+// FIX THIS
 void GY31::handlePulse() {
-    pulse_count_++;
+    //pulse_count_++;
 }
 
 int GY31::readChannel(int s2_state, int s3_state) {
