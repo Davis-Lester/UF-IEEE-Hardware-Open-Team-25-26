@@ -3,18 +3,19 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
-#include "hardware_team_robot/action/drive.hpp" //THIS FILE NEEDS TO BE ADDED
+#include "hardware_team_robot/action/drive.hpp"
 #include "hardware_team_robot/sensors/MPU6050.h" 
 #include <pigpio.h>
 #include <atomic>
 
 class ChassisNode : public rclcpp::Node {
 public:
-    using Drive = Hardware_Team_Robot::action::Drive;
+    using Drive = hardware_team_robot::action::Drive;
     using GoalHandleDrive = rclcpp_action::ServerGoalHandle<Drive>;
 
     ChassisNode();
-
+    
+    void handle_encoder_tick(int gpio, int level);
 private:
     // ROS Action Server & IMU
     rclcpp_action::Server<Drive>::SharedPtr action_server_;
@@ -32,7 +33,7 @@ private:
     std::atomic<long> rl_ticks_{0}, rr_ticks_{0};
 
     void setup_encoders();
-    void handle_encoder_tick(int gpio, int level);
+    
     
     // --- MOTORS (4 Wheels) ---
     void setup_motor_pins();
