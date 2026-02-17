@@ -18,8 +18,12 @@ find_library(PIGPIO_LIB pigpio REQUIRED)
 
 # Create library for sensors
 add_library(sensor_lib SHARED 
-    #src/sensors/GY31.cpp THIS FILE NEEDS TO BE FIXED BEFORE ITS ADDED
+    #src/sensors/GY31.cpp #NEEDS TO BE FIXED
     src/sensors/MPU6050.cpp
+    src/odometry.cpp
+    src/navigation_controller.cpp
+    src/mecanum_odometry.cpp
+    src/encoder_driver.cpp
 )
 
 target_include_directories(sensor_lib PUBLIC
@@ -29,25 +33,35 @@ target_include_directories(sensor_lib PUBLIC
 ament_target_dependencies(sensor_lib rclcpp std_msgs sensor_msgs nav_msgs)
 
 
-# WILL HAVE TO ADD ODOMETRY AND AUTON NODES LATER
+# define Drive action
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/Drive.action"
+)
+# WILL HAVE TO ADD AUTON NODES LATER
 
 # Create nodes
 # Chassis Node
-add_executable(chassis_node 
-    src/chassis_node.cpp 
-)
-target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB})
-ament_target_dependencies(chassis_node rclcpp rclcpp_action)
+# add_executable(chassis_node 
+#     src/chassis_node.cpp 
+# )
+# target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB})
+# ament_target_dependencies(chassis_node rclcpp rclcpp_action)
+
 
 # IR Node
 add_executable(ir_node src/ir_node.cpp) # IR node likely doesn't need odometry/IMU
 target_link_libraries(ir_node ${PIGPIO_LIB})
 ament_target_dependencies(ir_node rclcpp std_msgs)
 
+# Odometry test node
+add_executable(odom_test_node src/odometry_test.cpp)
+target_link_libraries(odom_test_node sensor_lib ${PIGPIO_LIB})
+ament_target_dependencies(odom_test_node rclcpp std_msgs)
 
 install(TARGETS
   sensor_lib
-  chassis_node
+  #chassis_node
+  odom_test_node
   ir_node
   DESTINATION lib/${PROJECT_NAME}
 )
