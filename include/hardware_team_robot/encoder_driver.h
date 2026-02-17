@@ -78,6 +78,8 @@ public:
     // Releases pigpio and GPIO resources
     void cleanup();
 
+    // Static wrapper required by pigpio callback API (Public so it is accessible by pigpio)
+    static void handleEncoderTickStatic(int gpio, int level, uint32_t tick, void* user_data);
 private:
 
     // GPIO pair for one quadrature encoder
@@ -104,8 +106,7 @@ private:
     // Determines rotation direction using quadrature logic
     int8_t getDirection(int gpio, int level);
 
-    // Static wrapper required by pigpio callback API
-    static void handleEncoderTickStatic(int gpio, int level, uint32_t tick, void* user_data);
+    
 
     // Instance-level interrupt handler
     void handleEncoderTick(int gpio, int level);

@@ -1,7 +1,7 @@
 #ifndef NAVIGATION_CONTROLLER_H
 #define NAVIGATION_CONTROLLER_H
 
-#include "Hardware_Team_Robot/mecanum_odometry.h"
+#include "hardware_team_robot/mecanum_odometry.h"
 #include "rclcpp/rclcpp.hpp"
 #include <memory>
 #include <cmath>
