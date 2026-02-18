@@ -4,7 +4,9 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "hardware_team_robot/action/drive.hpp"
-#include "hardware_team_robot/sensors/MPU6050.h" 
+#include "hardware_team_robot/sensors/MPU6050.h"
+#include "hardware_team_robot/mecanum_odometry.h"
+#include "hardware_team_robot/encoder_driver.h" 
 #include <pigpio.h>
 #include <atomic>
 

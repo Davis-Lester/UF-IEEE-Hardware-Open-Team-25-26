@@ -16,13 +16,13 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
-#include "vex_pi_bot/action/drive.hpp"
+#include "hardware_team_robot/action/drive.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 #include <string>
 
 class AutonRoutine : public rclcpp::Node {
 public:
-    using Drive = vex_pi_bot::action::Drive;
+    using Drive = hardware_team_robot::action::Drive;
     using GoalHandleDrive = rclcpp_action::ClientGoalHandle<Drive>;
 
     AutonRoutine();

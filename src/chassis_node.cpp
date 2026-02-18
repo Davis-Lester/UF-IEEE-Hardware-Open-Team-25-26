@@ -8,12 +8,12 @@
 #include <thread>
 #include <pigpio.h>
 
-/*// ISR Wrapper
+// ISR Wrapper
 static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
     ChassisNode *node = (ChassisNode*)user;
     node->handle_encoder_tick(gpio, level);
 }
-*/
+
 
 Hardware::MecanumOdometry::Pose ChassisNode::getOdometryPose() const {
     if (odometry_) {
