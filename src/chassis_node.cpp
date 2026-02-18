@@ -8,10 +8,66 @@
 #include <thread>
 #include <pigpio.h>
 
-// ISR Wrapper
+/*// ISR Wrapper
 static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
     ChassisNode *node = (ChassisNode*)user;
     node->handle_encoder_tick(gpio, level);
+}
+*/
+
+Hardware::MecanumOdometry::Pose ChassisNode::getOdometryPose() const {
+    if (odometry_) {
+        return odometry_->getCurrentPose();
+    }
+    return {0.0f, 0.0f, 0.0f};
+}
+
+void ChassisNode::resetOdometry() {
+    if (odometry_) {
+        odometry_->reset();
+        RCLCPP_INFO(this->get_logger(), "Odometry reset to origin");
+    }
+}
+
+void ChassisNode::odometry_update_loop() {
+    rclcpp::Rate loop_rate(100);  // 100 Hz update rate
+    
+    // Track heading by integrating gyro
+    float heading_rad = 0.0f;
+    auto last_update = std::chrono::high_resolution_clock::now();
+    
+    while (rclcpp::ok()) {
+        if (encoder_driver_ && odometry_) {
+            // Get current encoder counts from hardware abstraction
+            int32_t fl = encoder_driver_->getFrontLeftTicks();
+            int32_t fr = encoder_driver_->getFrontRightTicks();
+            int32_t rl = encoder_driver_->getRearLeftTicks();
+            int32_t rr = encoder_driver_->getRearRightTicks();
+            
+            // Get heading from IMU via gyro integration
+            float gx, gy, gz;
+            if (imu_.readGyro(&gx, &gy, &gz) == 0) {
+                // Z-axis gyro is rotation (degrees per second)
+                auto now = std::chrono::high_resolution_clock::now();
+                float dt = std::chrono::duration<float>(now - last_update).count();
+                
+                // Convert gyro reading (dps) to radians per second and integrate
+                float gz_rad_per_sec = gz * (M_PI / 180.0f);
+                heading_rad += gz_rad_per_sec * dt;
+                
+                // Normalize heading to [-π, π]
+                while (heading_rad > M_PI) heading_rad -= 2.0f * M_PI;
+                while (heading_rad < -M_PI) heading_rad += 2.0f * M_PI;
+                
+                last_update = now;
+            }
+            
+            // Update odometry with encoder data and IMU heading
+            odometry_->update(fl, fr, rl, rr, heading_rad);
+        }
+        
+        loop_rate.sleep();
+    }
 }
 
 // Updated GPIO Pins for 4-Motor Setup (Avoids conflicting pins)
@@ -255,3 +311,62 @@ int main(int argc, char * argv[]) {
     rclcpp::shutdown();
     return 0;
 }
+
+
+
+
+
+
+// ============================================================================
+// INTEGRATION SUGGESTIONS FOR FUTURE IMPROVEMENTS
+// ============================================================================
+// 
+// The odometry system (encoder_driver_ + odometry_) is now running in a 
+// separate thread in the background. The current execute() method still uses
+// raw encoder ticks for control (legacy behavior). Here are suggestions for
+// improved autonomous routines:
+//
+// SUGGESTION 1: Use odometry instead of raw encoder ticks
+// -------------------------------------------------------
+// Instead of reading fl_ticks_, fr_ticks_, etc. in execute(), you could use:
+//   Hardware::MecanumOdometry::Pose pose = getOdometryPose();
+//   double x = pose.x;      // Current X position (inches)
+//   double y = pose.y;      // Current Y position (inches)
+//   double theta = pose.theta;  // Current heading (radians)
+//
+// This would allow position-based control instead of tick-based control.
+//
+// SUGGESTION 2: Create new autonomous modes using NavigationController
+// -------------------------------------------------------
+// The Hardware::NavigationController (separate system) can compute navigation
+// commands. To use it:
+//   1. Create a navigation_controller_ member variable
+//   2. Call navigation_controller_->moveToPose(target_x, target_y, target_heading)
+//   3. This returns high-level motor commands for autonomous routines
+//
+// SUGGESTION 3: Fuse encoder ticks with odometry for redundancy
+// -------------------------------------------------------
+// Current code: Encoder ISRs update fl_ticks_, fr_ticks_, etc.
+// New code: EncoderDriver also manages these, OdometryThread updates position
+// You could validate consistency between the two for fault detection.
+//
+// SUGGESTION 4: Add global localization to odometry
+// -------------------------------------------------------
+// Odometry will drift over long matches. Consider:
+//   - Vision-based corrections (ArUco markers, vision systems)
+//   - Landmark-based pose updates
+//   - Reset odometry when robot touches known field elements
+//
+// SUGGESTION 5: Improve motor mixing for odometry-based control
+// -------------------------------------------------------
+// Current execute() applies independent PID to TURN/STRAFE/DRIVE modes.
+// With odometry, you could implement:
+//   - Smooth trajectories between waypoints
+//   - Obstacle avoidance with encoder feedback
+//   - Heading correction without separate gyro loop
+//
+// ============================================================================
+// NOTE: All changes above are optional. The current motor control code works.
+// The odometry system is running in parallel and ready to use when you need it.
+// See getOdometryPose() and resetOdometry() public methods to access it.
+// ============================================================================

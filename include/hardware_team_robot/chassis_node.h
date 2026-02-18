@@ -13,12 +13,23 @@ public:
     using Drive = Hardware_Team_Robot::action::Drive;
     using GoalHandleDrive = rclcpp_action::ServerGoalHandle<Drive>;
 
+    // Odometry System Interface 
+    // Get current position/heading from odometry system
+    Hardware::MecanumOdometry::Pose getOdometryPose() const;
+    // Reset odometry to origin
+    void resetOdometry();
+
     ChassisNode();
 
 private:
     // ROS Action Server & IMU
     rclcpp_action::Server<Drive>::SharedPtr action_server_;
     MPU6050 imu_;
+
+    // Hardware abstraction for encoder and odometry 
+    std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
+    std::shared_ptr<Hardware::MecanumOdometry> odometry_;
+    void odometry_update_loop();  // Continuously reads encoders and updates odometry
 
     // Callbacks
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal);
