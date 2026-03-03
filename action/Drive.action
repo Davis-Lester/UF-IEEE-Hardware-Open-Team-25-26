@@ -1,14 +1,10 @@
 # Goal
-float64 target_ticks
-float64 target_angle
-string mode  # "DRIVE" or "TURN"
-int32 max_speed
-
+string mode           # "DRIVE", "STRAFE", or "TURN"
+float64 target_value  # Distance in ticks (DRIVE/STRAFE) or Angle in degrees (TURN)
+float64 max_speed     # Maximum motor power (0-255)
 ---
 # Result
-bool success
-string message
-
+bool success          # True if target was reached successfully
 ---
 # Feedback
-float64 current_error
+float64 current_error # Current error from the target (ticks or degrees)
