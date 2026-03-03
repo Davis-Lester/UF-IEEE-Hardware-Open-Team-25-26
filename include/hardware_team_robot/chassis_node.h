@@ -24,6 +24,7 @@ public:
     ChassisNode();
     
     void handle_encoder_tick(int gpio, int level);
+    
 private:
     // ROS Action Server & IMU
     rclcpp_action::Server<Drive>::SharedPtr action_server_;
@@ -33,6 +34,20 @@ private:
     std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
     std::shared_ptr<Hardware::MecanumOdometry> odometry_;
     void odometry_update_loop();  // Continuously reads encoders and updates odometry
+
+    // --- Ultrasonic Odometry Correction ---
+    void correct_odometry_from_wall(float sensor_distance, float offset_x, float offset_y, float known_wall_y);
+    void setup_ultrasonic_sensors();
+    void handle_us_echo(int gpio, int level, uint32_t tick);
+    static void us_echo_isr_wrapper(int gpio, int level, uint32_t tick, void *user);
+
+    // Hardware timers for calculating the echo pulse width
+    uint32_t us_left_start_tick_ = 0;
+    uint32_t us_right_start_tick_ = 0;
+    
+    // Thread-safe storage for the latest calculated distances
+    std::atomic<float> us_left_distance_{-1.0f};
+    std::atomic<float> us_right_distance_{-1.0f};
 
     // Callbacks
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal);
@@ -47,31 +62,40 @@ private:
 
     void setup_encoders();
     
-    
     // --- MOTORS (4 Wheels) ---
     void setup_motor_pins();
     // New: Individual control for mixing
     void set_mecanum_power(double fl, double fr, double rl, double rr);
     void stop_motors();
 
-    // --- PIN DEFINITIONS (Check your wiring!) ---
+    // --- PIN DEFINITIONS & CONSTANTS ---
+    // Ultrasonic Pins
+    static constexpr int PIN_US_LEFT_TRIG = 7;
+    static constexpr int PIN_US_LEFT_ECHO = 10;
+    static constexpr int PIN_US_RIGHT_TRIG = 14;
+    static constexpr int PIN_US_RIGHT_ECHO = 15;
+
+    // Ultrasonic Sensor Displacements (Inches)
+    static constexpr float US_LEFT_OFFSET_X = 0.0f;
+    static constexpr float US_LEFT_OFFSET_Y = 4.5f;
+    static constexpr float US_RIGHT_OFFSET_X = 0.0f;
+    static constexpr float US_RIGHT_OFFSET_Y = -4.5f;
+
+    // Known Arena Boundaries (Inches)
+    static constexpr float KNOWN_LEFT_WALL_Y = 48.0f;
+    static constexpr float KNOWN_RIGHT_WALL_Y = 0.0f;
+
     // Motors (PWM, IN1, IN2)
-    // Front Left
-    static const int FL_PWM = 12, FL_IN1 = 5, FL_IN2 = 6;
-    // Front Right
-    static const int FR_PWM = 13, FR_IN1 = 16, FR_IN2 = 19;
-    // Rear Left
-    static const int RL_PWM = 18, RL_IN1 = 20, RL_IN2 = 21;
-    // Rear Right
-    static const int RR_PWM = 19, RR_IN1 = 26, RR_IN2 = 20; // Note: GPIO 20 used twice? Check free pins!
-    // *Correction*: GPIO 20/21 are used above. Let's fix RR to 26 & 4.
-    // Fixed Pinout below:
+    static constexpr int PIN_FL_PWM = 12, PIN_FL_IN1 = 5,  PIN_FL_IN2 = 6;
+    static constexpr int PIN_FR_PWM = 13, PIN_FR_IN1 = 23, PIN_FR_IN2 = 24;
+    static constexpr int PIN_RL_PWM = 18, PIN_RL_IN1 = 25, PIN_RL_IN2 = 8;
+    static constexpr int PIN_RR_PWM = 19, PIN_RR_IN1 = 16, PIN_RR_IN2 = 20;
 
     // Encoders (Channel A, Channel B)
-    static const int FL_ENC_A = 17, FL_ENC_B = 27;
-    static const int FR_ENC_A = 22, FR_ENC_B = 10; // 10 is SPI MOSI, ensure SPI is off or use other
-    static const int RL_ENC_A = 9,  RL_ENC_B = 11; // SPI MISO/SCLK
-    static const int RR_ENC_A = 0,  RR_ENC_B = 1;  // ID_SD/SC (Reserved?) -> Use 2, 3
+    static constexpr int PIN_FL_ENC_A = 17, PIN_FL_ENC_B = 27;
+    static constexpr int PIN_FR_ENC_A = 22, PIN_FR_ENC_B = 4; 
+    static constexpr int PIN_RL_ENC_A = 26, PIN_RL_ENC_B = 21;
+    static constexpr int PIN_RR_ENC_A = 9,  PIN_RR_ENC_B = 11;
 };
 
-#endif
+#endif // HARDWARE_TEAM_ROBOT_CHASSIS_NODE_H

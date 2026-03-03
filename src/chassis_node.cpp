@@ -8,68 +8,6 @@
 #include <thread>
 #include <pigpio.h>
 
-// ISR Wrapper
-static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
-    ChassisNode *node = (ChassisNode*)user;
-    node->handle_encoder_tick(gpio, level);
-}
-
-
-Hardware::MecanumOdometry::Pose ChassisNode::getOdometryPose() const {
-    if (odometry_) {
-        return odometry_->getCurrentPose();
-    }
-    return {0.0f, 0.0f, 0.0f};
-}
-
-void ChassisNode::resetOdometry() {
-    if (odometry_) {
-        odometry_->reset();
-        RCLCPP_INFO(this->get_logger(), "Odometry reset to origin");
-    }
-}
-
-void ChassisNode::odometry_update_loop() {
-    rclcpp::Rate loop_rate(100);  // 100 Hz update rate
-    
-    // Track heading by integrating gyro
-    float heading_rad = 0.0f;
-    auto last_update = std::chrono::high_resolution_clock::now();
-    
-    while (rclcpp::ok()) {
-        if (encoder_driver_ && odometry_) {
-            // Get current encoder counts from hardware abstraction
-            int32_t fl = encoder_driver_->getFrontLeftTicks();
-            int32_t fr = encoder_driver_->getFrontRightTicks();
-            int32_t rl = encoder_driver_->getRearLeftTicks();
-            int32_t rr = encoder_driver_->getRearRightTicks();
-            
-            // Get heading from IMU via gyro integration
-            float gx, gy, gz;
-            if (imu_.readGyro(&gx, &gy, &gz) == 0) {
-                // Z-axis gyro is rotation (degrees per second)
-                auto now = std::chrono::high_resolution_clock::now();
-                float dt = std::chrono::duration<float>(now - last_update).count();
-                
-                // Convert gyro reading (dps) to radians per second and integrate
-                float gz_rad_per_sec = gz * (M_PI / 180.0f);
-                heading_rad += gz_rad_per_sec * dt;
-                
-                // Normalize heading to [-π, π]
-                while (heading_rad > M_PI) heading_rad -= 2.0f * M_PI;
-                while (heading_rad < -M_PI) heading_rad += 2.0f * M_PI;
-                
-                last_update = now;
-            }
-            
-            // Update odometry with encoder data and IMU heading
-            odometry_->update(fl, fr, rl, rr, heading_rad);
-        }
-        
-        loop_rate.sleep();
-    }
-}
-
 // Updated GPIO Pins for 4-Motor Setup (Avoids conflicting pins)
 // Front Left
 #define PIN_FL_PWM 12
@@ -97,6 +35,116 @@ void ChassisNode::odometry_update_loop() {
 #define PIN_RL_ENC_B 21
 #define PIN_RR_ENC_A 9  // Check if SPI is disabled
 #define PIN_RR_ENC_B 11
+
+// --- Ultrasonic Sensor GPIO Pins ---
+#define PIN_US_LEFT_TRIG  7
+#define PIN_US_LEFT_ECHO  10
+#define PIN_US_RIGHT_TRIG 14
+#define PIN_US_RIGHT_ECHO 15
+
+// --- Ultrasonic Sensor Displacement (Inches) ---
+// Displacement from the exact center of the robot to the sensor face.
+// Assuming X is forward/backward, Y is left/right.
+#define US_LEFT_OFFSET_X   0.0f  // How far forward the left sensor is
+#define US_LEFT_OFFSET_Y   4.5f  // How far left the left sensor is (Positive)
+#define US_RIGHT_OFFSET_X  0.0f  // How far forward the right sensor is
+#define US_RIGHT_OFFSET_Y -4.5f  // How far right the right sensor is (Negative)
+
+// --- Known Arena Boundaries (Inches) ---
+// Define where the walls actually are in global coordinate system.
+#define KNOWN_LEFT_WALL_Y  48.0f // Example: Left wall is 48 inches from origin
+#define KNOWN_RIGHT_WALL_Y 0.0f  // Example: Right wall is at Y = 0
+
+// ISR Wrapper
+static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
+    ChassisNode *node = (ChassisNode*)user;
+    node->handle_encoder_tick(gpio, level);
+}
+
+Hardware::MecanumOdometry::Pose ChassisNode::getOdometryPose() const {
+    if (odometry_) {
+        return odometry_->getCurrentPose();
+    }
+    return {0.0f, 0.0f, 0.0f};
+}
+
+void ChassisNode::resetOdometry() {
+    if (odometry_) {
+        odometry_->reset();
+        RCLCPP_INFO(this->get_logger(), "Odometry reset to origin");
+    }
+}
+
+void ChassisNode::odometry_update_loop() {
+    rclcpp::Rate loop_rate(100);  // 100 Hz update rate
+    
+    // Track heading by integrating gyro
+    float heading_rad = 0.0f;
+    auto last_update = std::chrono::high_resolution_clock::now();
+    
+    // Timer to prevent spamming ultrasonic readings (e.g., read at 10Hz instead of 100Hz)
+    int ultrasonic_counter = 0;
+    
+    while (rclcpp::ok()) {
+
+        if (encoder_driver_ && odometry_) {
+
+            // Get current encoder counts from hardware abstraction
+            int32_t fl = encoder_driver_->getFrontLeftTicks();
+            int32_t fr = encoder_driver_->getFrontRightTicks();
+            int32_t rl = encoder_driver_->getRearLeftTicks();
+            int32_t rr = encoder_driver_->getRearRightTicks();
+            
+            // Get heading from IMU via gyro integration
+            float gx, gy, gz;
+            if (imu_.readGyro(&gx, &gy, &gz) == 0) {
+
+                // Z-axis gyro is rotation (degrees per second)
+                auto now = std::chrono::high_resolution_clock::now();
+                float dt = std::chrono::duration<float>(now - last_update).count();
+                
+                // Convert gyro reading (dps) to radians per second and integrate
+                float gz_rad_per_sec = gz * (M_PI / 180.0f);
+                heading_rad += gz_rad_per_sec * dt;
+                
+                // Normalize heading to [-π, π]
+                while (heading_rad > M_PI) heading_rad -= 2.0f * M_PI;
+                while (heading_rad < -M_PI) heading_rad += 2.0f * M_PI;
+                
+                last_update = now;
+            }
+            
+            // Update odometry with encoder data and IMU heading
+            odometry_->update(fl, fr, rl, rr, heading_rad);
+
+            // --- Ultrasonic Correction Block ---
+            ultrasonic_counter++;
+            if (ultrasonic_counter >= 10) { // Run every 10 ticks (10Hz)
+                ultrasonic_counter = 0;
+
+                // Read Left Sensor
+                // Note: Requires a read_ultrasonic_distance() implementation
+                float left_dist = read_ultrasonic_distance(PIN_US_LEFT_TRIG, PIN_US_LEFT_ECHO);
+                
+                // If distance is valid and within a reliable range (e.g., under 24 inches)
+                if (left_dist > 0.0f && left_dist < 24.0f) {
+                    correct_odometry_from_wall(left_dist, US_LEFT_OFFSET_X, US_LEFT_OFFSET_Y, KNOWN_LEFT_WALL_Y);
+                }
+
+                // Read Right Sensor
+                float right_dist = read_ultrasonic_distance(PIN_US_RIGHT_TRIG, PIN_US_RIGHT_ECHO);
+                
+                if (right_dist > 0.0f && right_dist < 24.0f) {
+                    // Pass negative distance because the right sensor points in the negative Y direction
+                    correct_odometry_from_wall(-right_dist, US_RIGHT_OFFSET_X, US_RIGHT_OFFSET_Y, KNOWN_RIGHT_WALL_Y);
+                }
+            }
+        }
+        
+        // Small sleep to release OS for other threads
+        loop_rate.sleep();
+    }
+}
 
 ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     if (gpioInitialise() < 0) {
@@ -296,6 +344,24 @@ void ChassisNode::handle_encoder_tick(int gpio, int level) {
     else if (gpio == PIN_RR_ENC_A) {
         if (level == gpioRead(PIN_RR_ENC_B)) rr_ticks_--; else rr_ticks_++; // Inverted?
     }
+}
+
+void ChassisNode::correct_odometry_from_wall(float sensor_distance, float offset_x, float offset_y, float known_wall_y) {
+    
+    // Simple return (not connected)
+    if (!odometry_) return;
+
+    // Get the current pose to calculate the correction
+    Hardware::MecanumOdometry::Pose current_pose = odometry_->getCurrentPose();
+    float theta = current_pose.theta_rad;
+
+    // Apply the 2D transformation to find the robot's true Y center
+    float corrected_y = known_wall_y - (offset_x * std::sin(theta)) - ((offset_y + sensor_distance) * std::cos(theta));
+
+    // We only update the Y axis. X and Theta remain what the odometry/IMU calculated.
+    odometry_->setPose(current_pose.x_inches, corrected_y, current_pose.theta_rad);
+
+    RCLCPP_INFO(this->get_logger(), "Odometry Corrected by Wall! Old Y: %.2f | New Y: %.2f", current_pose.y_inches, corrected_y);
 }
 
 void ChassisNode::stop_motors() {
