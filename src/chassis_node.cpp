@@ -8,53 +8,6 @@
 #include <thread>
 #include <pigpio.h>
 
-// Updated GPIO Pins for 4-Motor Setup (Avoids conflicting pins)
-// Front Left
-#define PIN_FL_PWM 12
-#define PIN_FL_IN1 5
-#define PIN_FL_IN2 6
-// Front Right
-#define PIN_FR_PWM 13
-#define PIN_FR_IN1 23
-#define PIN_FR_IN2 24
-// Rear Left
-#define PIN_RL_PWM 18
-#define PIN_RL_IN1 25 // 25
-#define PIN_RL_IN2 8  // 8
-// Rear Right
-#define PIN_RR_PWM 19
-#define PIN_RR_IN1 16 // 16
-#define PIN_RR_IN2 20 // 20
-
-// Encoders (A/B)
-#define PIN_FL_ENC_A 17
-#define PIN_FL_ENC_B 27
-#define PIN_FR_ENC_A 22
-#define PIN_FR_ENC_B 4  // Changed from 10 (SPI)
-#define PIN_RL_ENC_A 26
-#define PIN_RL_ENC_B 21
-#define PIN_RR_ENC_A 9  // Check if SPI is disabled
-#define PIN_RR_ENC_B 11
-
-// --- Ultrasonic Sensor GPIO Pins ---
-#define PIN_US_LEFT_TRIG  7
-#define PIN_US_LEFT_ECHO  10
-#define PIN_US_RIGHT_TRIG 14
-#define PIN_US_RIGHT_ECHO 15
-
-// --- Ultrasonic Sensor Displacement (Inches) ---
-// Displacement from the exact center of the robot to the sensor face.
-// Assuming X is forward/backward, Y is left/right.
-#define US_LEFT_OFFSET_X   0.0f  // How far forward the left sensor is
-#define US_LEFT_OFFSET_Y   4.5f  // How far left the left sensor is (Positive)
-#define US_RIGHT_OFFSET_X  0.0f  // How far forward the right sensor is
-#define US_RIGHT_OFFSET_Y -4.5f  // How far right the right sensor is (Negative)
-
-// --- Known Arena Boundaries (Inches) ---
-// Define where the walls actually are in global coordinate system.
-#define KNOWN_LEFT_WALL_Y  48.0f // Example: Left wall is 48 inches from origin
-#define KNOWN_RIGHT_WALL_Y 0.0f  // Example: Right wall is at Y = 0
-
 // ISR Wrapper
 static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
     ChassisNode *node = (ChassisNode*)user;
@@ -75,20 +28,22 @@ void ChassisNode::resetOdometry() {
     }
 }
 
+float ChassisNode::calculate_y_from_wall(const Hardware::MecanumOdometry::Pose& current_pose, float sensor_distance, float offset_x, float offset_y, float known_wall_y) {
+    float theta = current_pose.theta_rad;
+    // Apply the 2D transformation matrix to find the robot's true Y center
+    return known_wall_y - (offset_x * std::sin(theta)) - ((offset_y + sensor_distance) * std::cos(theta));
+}
+
 void ChassisNode::odometry_update_loop() {
     rclcpp::Rate loop_rate(100);  // 100 Hz update rate
     
     // Track heading by integrating gyro
     float heading_rad = 0.0f;
     auto last_update = std::chrono::high_resolution_clock::now();
-    
-    // Timer to prevent spamming ultrasonic readings (e.g., read at 10Hz instead of 100Hz)
     int ultrasonic_counter = 0;
     
     while (rclcpp::ok()) {
-
         if (encoder_driver_ && odometry_) {
-
             // Get current encoder counts from hardware abstraction
             int32_t fl = encoder_driver_->getFrontLeftTicks();
             int32_t fr = encoder_driver_->getFrontRightTicks();
@@ -98,12 +53,9 @@ void ChassisNode::odometry_update_loop() {
             // Get heading from IMU via gyro integration
             float gx, gy, gz;
             if (imu_.readGyro(&gx, &gy, &gz) == 0) {
-
-                // Z-axis gyro is rotation (degrees per second)
                 auto now = std::chrono::high_resolution_clock::now();
                 float dt = std::chrono::duration<float>(now - last_update).count();
                 
-                // Convert gyro reading (dps) to radians per second and integrate
                 float gz_rad_per_sec = gz * (M_PI / 180.0f);
                 heading_rad += gz_rad_per_sec * dt;
                 
@@ -117,31 +69,55 @@ void ChassisNode::odometry_update_loop() {
             // Update odometry with encoder data and IMU heading
             odometry_->update(fl, fr, rl, rr, heading_rad);
 
-            // --- Ultrasonic Correction Block ---
+            // --- Ultrasonic Correction Block (Runs at 10Hz) ---
             ultrasonic_counter++;
-            if (ultrasonic_counter >= 10) { // Run every 10 ticks (10Hz)
+            if (ultrasonic_counter >= 10 && ultrasonic_driver_) { 
                 ultrasonic_counter = 0;
 
-                // Read Left Sensor
-                // Note: Requires a read_ultrasonic_distance() implementation
-                float left_dist = read_ultrasonic_distance(PIN_US_LEFT_TRIG, PIN_US_LEFT_ECHO);
+                float left_dist = ultrasonic_driver_->getLeftDistance();
+                float right_dist = ultrasonic_driver_->getRightDistance();
                 
-                // If distance is valid and within a reliable range (e.g., under 24 inches)
-                if (left_dist > 0.0f && left_dist < 24.0f) {
-                    correct_odometry_from_wall(left_dist, US_LEFT_OFFSET_X, US_LEFT_OFFSET_Y, KNOWN_LEFT_WALL_Y);
-                }
+                bool left_valid = (left_dist > 0.0f && left_dist < 24.0f);
+                bool right_valid = (right_dist > 0.0f && right_dist < 24.0f);
 
-                // Read Right Sensor
-                float right_dist = read_ultrasonic_distance(PIN_US_RIGHT_TRIG, PIN_US_RIGHT_ECHO);
-                
-                if (right_dist > 0.0f && right_dist < 24.0f) {
-                    // Pass negative distance because the right sensor points in the negative Y direction
-                    correct_odometry_from_wall(-right_dist, US_RIGHT_OFFSET_X, US_RIGHT_OFFSET_Y, KNOWN_RIGHT_WALL_Y);
+                if (left_valid || right_valid) {
+                    Hardware::MecanumOdometry::Pose current_pose = odometry_->getCurrentPose();
+                    float new_y = current_pose.y_inches;
+                    bool update_needed = false;
+
+                    // Calculate proposed Y coordinates
+                    if (left_valid && right_valid) {
+                        float y_left = calculate_y_from_wall(current_pose, left_dist, US_LEFT_OFFSET_X, US_LEFT_OFFSET_Y, KNOWN_LEFT_WALL_Y);
+                        float y_right = calculate_y_from_wall(current_pose, -right_dist, US_RIGHT_OFFSET_X, US_RIGHT_OFFSET_Y, KNOWN_RIGHT_WALL_Y);
+                        
+                        // FUSION: Average the two valid readings
+                        new_y = (y_left + y_right) / 2.0f;
+                        update_needed = true;
+                    } 
+                    else if (left_valid) {
+                        new_y = calculate_y_from_wall(current_pose, left_dist, US_LEFT_OFFSET_X, US_LEFT_OFFSET_Y, KNOWN_LEFT_WALL_Y);
+                        update_needed = true;
+                    } 
+                    else if (right_valid) {
+                        new_y = calculate_y_from_wall(current_pose, -right_dist, US_RIGHT_OFFSET_X, US_RIGHT_OFFSET_Y, KNOWN_RIGHT_WALL_Y);
+                        update_needed = true;
+                    }
+
+                    // Apply the update once
+                    if (update_needed) {
+                        float error = std::abs(current_pose.y_inches - new_y);
+                        if (error < 12.0f) { 
+                            odometry_->setPose(current_pose.x_inches, new_y, current_pose.theta_rad);
+                        } else {
+                            RCLCPP_WARN(this->get_logger(), "Odom Correction Ignored (Jump too large). Est Y: %.2f | Calc Y: %.2f",
+                                        current_pose.y_inches, new_y);
+                        }
+                    }
                 }
+                // Ping the sensors for the next cycle
+                ultrasonic_driver_->trigger();
             }
         }
-        
-        // Small sleep to release OS for other threads
         loop_rate.sleep();
     }
 }
@@ -152,12 +128,29 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     } else {
         setup_motor_pins();
         setup_encoders();
+        
+        // --- Setup Ultrasonic System ---
+        Hardware::UltrasonicDriver::Config left_us_cfg{PIN_US_LEFT_TRIG, PIN_US_LEFT_ECHO};
+        Hardware::UltrasonicDriver::Config right_us_cfg{PIN_US_RIGHT_TRIG, PIN_US_RIGHT_ECHO};
+        
+        ultrasonic_driver_ = std::make_shared<Hardware::UltrasonicDriver>(left_us_cfg, right_us_cfg);
+        if (!ultrasonic_driver_->initialize()) {
+            RCLCPP_ERROR(this->get_logger(), "Ultrasonic Init Failed!");
+        }
     }
+
+    // Default chassis dimensions for MecanumOdometry
+    odometry_ = std::make_shared<Hardware::MecanumOdometry>(177.8f, 237.5f, 60.0f);
+    encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
+    encoder_driver_->initialize();
 
     if (imu_.initialize() == 0) {
         RCLCPP_INFO(this->get_logger(), "IMU Calibrating...");
         imu_.calibrate(500); 
     }
+
+    // Launch odometry update loop in a background thread
+    std::thread(&ChassisNode::odometry_update_loop, this).detach();
 
     this->action_server_ = rclcpp_action::create_server<Drive>(
         this, "drive_command",
@@ -185,8 +178,8 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 
     // Tuning
     if (is_turning) kp = 2.0;
-    else if (is_strafing) kp = 1.0; // Needs higher power to slide wheels sideways
-    else kp = 0.6; // Driving straight
+    else if (is_strafing) kp = 1.0; 
+    else kp = 0.6; 
 
     rclcpp::Rate loop_rate(50);
     double dt = 0.02;
@@ -201,39 +194,30 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 
         // --- SENSOR READING & ERROR CALC ---
         if (is_turning) {
-            // GYRO TURN
             float gx, gy, gz;
             imu_.readGyro(&gx, &gy, &gz);
             current_val += (gz * dt);
-            error = goal->target_angle - current_val;
+            error = goal->target_value - current_val;
         } 
         else if (is_strafing) {
-            // MECANUM STRAFE KINEMATICS
-            // Displacement = (FL - FR - RL + RR) / 4
-            // Strafe Right: FL(+), FR(-), RL(-), RR(+)
             double fl = std::abs(fl_ticks_.load());
             double fr = std::abs(fr_ticks_.load());
             double rl = std::abs(rl_ticks_.load());
             double rr = std::abs(rr_ticks_.load());
             
-            // Average the 4 wheels to get "Strafe Ticks"
             double avg_ticks = (fl + fr + rl + rr) / 4.0;
-            
-            // Direction handling
-            if (goal->target_ticks < 0) avg_ticks = -avg_ticks;
+            if (goal->target_value < 0) avg_ticks = -avg_ticks;
             
             current_val = avg_ticks;
-            error = goal->target_ticks - current_val;
+            error = goal->target_value - current_val;
         } 
         else {
-            // STRAIGHT DRIVE
-            // Displacement = Average of all 4
             double sum = std::abs(fl_ticks_) + std::abs(fr_ticks_) + std::abs(rl_ticks_) + std::abs(rr_ticks_);
             double avg_ticks = sum / 4.0;
-            if (goal->target_ticks < 0) avg_ticks = -avg_ticks;
+            if (goal->target_value < 0) avg_ticks = -avg_ticks;
             
             current_val = avg_ticks;
-            error = goal->target_ticks - current_val;
+            error = goal->target_value - current_val;
         }
 
         // --- PID OUTPUT ---
@@ -245,21 +229,12 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 
         // --- MIXING & MOTOR OUTPUT ---
         if (is_turning) {
-            // Turn Left: Left(-), Right(+)
-            // Turn Right: Left(+), Right(-)
-            // Note: 'output' sign depends on error direction
-            // If Target=90, Error=90, Output=High. We want Turn Right.
-            // Setup: FL(-), RL(-)  FR(+), RR(+)? No, standard tank turn.
             set_mecanum_power(-output, output, -output, output);
         } 
         else if (is_strafing) {
-            // Strafe Right (Positive Output): FL(+), FR(-), RL(-), RR(+)
-            // Strafe Left (Negative Output): FL(-), FR(+), RL(+), RR(-)
             set_mecanum_power(output, -output, -output, output);
         } 
         else {
-            // Forward: All Positive
-            // Optional: Add P-correction for heading using Gyro here
             set_mecanum_power(output, output, output, output);
         }
 
@@ -281,7 +256,6 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 }
 
 void ChassisNode::set_mecanum_power(double fl, double fr, double rl, double rr) {
-    // Helper lambda to write to a specific motor channel
     auto write_motor = [](int pwm_pin, int in1, int in2, double speed) {
         int pwm_val = std::clamp((int)speed, -255, 255);
         if (pwm_val > 0) {
@@ -301,7 +275,6 @@ void ChassisNode::set_mecanum_power(double fl, double fr, double rl, double rr) 
 }
 
 void ChassisNode::setup_motor_pins() {
-    // Outputs
     int outputs[] = {
         PIN_FL_PWM, PIN_FL_IN1, PIN_FL_IN2,
         PIN_FR_PWM, PIN_FR_IN1, PIN_FR_IN2,
@@ -312,7 +285,6 @@ void ChassisNode::setup_motor_pins() {
 }
 
 void ChassisNode::setup_encoders() {
-    // Inputs with Pullups
     int inputs[] = {
         PIN_FL_ENC_A, PIN_FL_ENC_B, PIN_FR_ENC_A, PIN_FR_ENC_B,
         PIN_RL_ENC_A, PIN_RL_ENC_B, PIN_RR_ENC_A, PIN_RR_ENC_B
@@ -322,7 +294,6 @@ void ChassisNode::setup_encoders() {
         gpioSetPullUpDown(p, PI_PUD_UP);
     }
 
-    // Attach ISRs to Channel A of each encoder
     gpioSetISRFuncEx(PIN_FL_ENC_A, EITHER_EDGE, 0, encoder_isr_wrapper, (void*)this);
     gpioSetISRFuncEx(PIN_FR_ENC_A, EITHER_EDGE, 0, encoder_isr_wrapper, (void*)this);
     gpioSetISRFuncEx(PIN_RL_ENC_A, EITHER_EDGE, 0, encoder_isr_wrapper, (void*)this);
@@ -330,46 +301,36 @@ void ChassisNode::setup_encoders() {
 }
 
 void ChassisNode::handle_encoder_tick(int gpio, int level) {
-    // Simple logic: if A==B, count up, else down.
-    // NOTE: You must verify direction for each wheel experimentally!
     if (gpio == PIN_FL_ENC_A) {
         if (level == gpioRead(PIN_FL_ENC_B)) fl_ticks_++; else fl_ticks_--;
     } 
     else if (gpio == PIN_FR_ENC_A) {
-        if (level == gpioRead(PIN_FR_ENC_B)) fr_ticks_--; else fr_ticks_++; // Inverted?
+        if (level == gpioRead(PIN_FR_ENC_B)) fr_ticks_--; else fr_ticks_++;
     }
     else if (gpio == PIN_RL_ENC_A) {
         if (level == gpioRead(PIN_RL_ENC_B)) rl_ticks_++; else rl_ticks_--;
     }
     else if (gpio == PIN_RR_ENC_A) {
-        if (level == gpioRead(PIN_RR_ENC_B)) rr_ticks_--; else rr_ticks_++; // Inverted?
+        if (level == gpioRead(PIN_RR_ENC_B)) rr_ticks_--; else rr_ticks_++;
     }
-}
-
-void ChassisNode::correct_odometry_from_wall(float sensor_distance, float offset_x, float offset_y, float known_wall_y) {
-    
-    // Simple return (not connected)
-    if (!odometry_) return;
-
-    // Get the current pose to calculate the correction
-    Hardware::MecanumOdometry::Pose current_pose = odometry_->getCurrentPose();
-    float theta = current_pose.theta_rad;
-
-    // Apply the 2D transformation to find the robot's true Y center
-    float corrected_y = known_wall_y - (offset_x * std::sin(theta)) - ((offset_y + sensor_distance) * std::cos(theta));
-
-    // We only update the Y axis. X and Theta remain what the odometry/IMU calculated.
-    odometry_->setPose(current_pose.x_inches, corrected_y, current_pose.theta_rad);
-
-    RCLCPP_INFO(this->get_logger(), "Odometry Corrected by Wall! Old Y: %.2f | New Y: %.2f", current_pose.y_inches, corrected_y);
 }
 
 void ChassisNode::stop_motors() {
     set_mecanum_power(0, 0, 0, 0);
 }
 
-// Boilerplate Action callbacks... (handle_goal, handle_cancel, handle_accepted same as before)
-// (Excluded for brevity, assume standard implementation)
+// Action callbacks
+rclcpp_action::GoalResponse ChassisNode::handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal) {
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+}
+
+rclcpp_action::CancelResponse ChassisNode::handle_cancel(const std::shared_ptr<GoalHandleDrive> goal_handle) {
+    return rclcpp_action::CancelResponse::ACCEPT;
+}
+
+void ChassisNode::handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle) {
+    std::thread{std::bind(&ChassisNode::execute, this, goal_handle)}.detach();
+}
 
 int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
@@ -377,62 +338,3 @@ int main(int argc, char * argv[]) {
     rclcpp::shutdown();
     return 0;
 }
-
-
-
-
-
-
-// ============================================================================
-// INTEGRATION SUGGESTIONS FOR FUTURE IMPROVEMENTS
-// ============================================================================
-// 
-// The odometry system (encoder_driver_ + odometry_) is now running in a 
-// separate thread in the background. The current execute() method still uses
-// raw encoder ticks for control (legacy behavior). Here are suggestions for
-// improved autonomous routines:
-//
-// SUGGESTION 1: Use odometry instead of raw encoder ticks
-// -------------------------------------------------------
-// Instead of reading fl_ticks_, fr_ticks_, etc. in execute(), you could use:
-//   Hardware::MecanumOdometry::Pose pose = getOdometryPose();
-//   double x = pose.x;      // Current X position (inches)
-//   double y = pose.y;      // Current Y position (inches)
-//   double theta = pose.theta;  // Current heading (radians)
-//
-// This would allow position-based control instead of tick-based control.
-//
-// SUGGESTION 2: Create new autonomous modes using NavigationController
-// -------------------------------------------------------
-// The Hardware::NavigationController (separate system) can compute navigation
-// commands. To use it:
-//   1. Create a navigation_controller_ member variable
-//   2. Call navigation_controller_->moveToPose(target_x, target_y, target_heading)
-//   3. This returns high-level motor commands for autonomous routines
-//
-// SUGGESTION 3: Fuse encoder ticks with odometry for redundancy
-// -------------------------------------------------------
-// Current code: Encoder ISRs update fl_ticks_, fr_ticks_, etc.
-// New code: EncoderDriver also manages these, OdometryThread updates position
-// You could validate consistency between the two for fault detection.
-//
-// SUGGESTION 4: Add global localization to odometry
-// -------------------------------------------------------
-// Odometry will drift over long matches. Consider:
-//   - Vision-based corrections (ArUco markers, vision systems)
-//   - Landmark-based pose updates
-//   - Reset odometry when robot touches known field elements
-//
-// SUGGESTION 5: Improve motor mixing for odometry-based control
-// -------------------------------------------------------
-// Current execute() applies independent PID to TURN/STRAFE/DRIVE modes.
-// With odometry, you could implement:
-//   - Smooth trajectories between waypoints
-//   - Obstacle avoidance with encoder feedback
-//   - Heading correction without separate gyro loop
-//
-// ============================================================================
-// NOTE: All changes above are optional. The current motor control code works.
-// The odometry system is running in parallel and ready to use when you need it.
-// See getOdometryPose() and resetOdometry() public methods to access it.
-// ============================================================================
