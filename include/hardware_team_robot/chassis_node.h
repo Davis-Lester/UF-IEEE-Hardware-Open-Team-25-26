@@ -24,10 +24,7 @@ public:
     void resetOdometry();
 
     ChassisNode();
-    ~ChassisNode();  
-    
-    std::thread odometry_thread_;  
-    std::thread execute_thread_;
+    ~ChassisNode();
     
     void handle_encoder_tick(int gpio, int level);
     
@@ -35,6 +32,10 @@ private:
     // ROS Action Server & IMU
     rclcpp_action::Server<Drive>::SharedPtr action_server_;
     MPU6050 imu_;
+
+    // Threads for background processes
+    std::thread odometry_thread_;  
+    std::thread execute_thread_;
 
     // Hardware abstraction for encoder and odometry 
     std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
