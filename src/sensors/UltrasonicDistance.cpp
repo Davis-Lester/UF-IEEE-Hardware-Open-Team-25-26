@@ -11,7 +11,7 @@
 // ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╭━╯┃
 // ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╰━━╯
 
-#include "hardware_team_robot/ultrasonic_driver.h"
+#include "hardware_team_robot/UltrasonicDistance.h"
 #include <pigpio.h>
 
 namespace Hardware {
@@ -32,13 +32,10 @@ bool UltrasonicDriver::initialize() {
     gpioSetMode(left_.trig_pin, PI_OUTPUT);
     gpioWrite(left_.trig_pin, 0); // Ensure trigger starts LOW
     gpioSetMode(left_.echo_pin, PI_INPUT);
-    if (gpioSetISRFuncEx(left_.echo_pin, EITHER_EDGE, 0, echoISR, (void*)this) < 0) return false;
-
-    // Initialize Right Sensor Pins
-    gpioSetMode(right_.trig_pin, PI_OUTPUT);
-    gpioWrite(right_.trig_pin, 0);
-    gpioSetMode(right_.echo_pin, PI_INPUT);
-    if (gpioSetISRFuncEx(right_.echo_pin, EITHER_EDGE, 0, echoISR, (void*)this) < 0) return false;
+    if (gpioSetISRFuncEx(right_.echo_pin, EITHER_EDGE, 0, echoISR, (void*)this) < 0) {  
+        gpioSetISRFuncEx(left_.echo_pin, EITHER_EDGE, 0, nullptr, nullptr);  
+        return false;  
+    }
 
     return true;
 }

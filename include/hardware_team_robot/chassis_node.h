@@ -22,6 +22,10 @@ public:
     void resetOdometry();
 
     ChassisNode();
+
+    ~ChassisNode();  
+    std::thread odometry_thread_;  
+    std::thread execute_thread_;
     
     void handle_encoder_tick(int gpio, int level);
     

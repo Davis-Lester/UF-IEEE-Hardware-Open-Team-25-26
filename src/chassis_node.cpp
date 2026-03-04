@@ -34,6 +34,11 @@ float ChassisNode::calculate_y_from_wall(const Hardware::MecanumOdometry::Pose& 
     return known_wall_y - (offset_x * std::sin(theta)) - ((offset_y + sensor_distance) * std::cos(theta));
 }
 
+ChassisNode::~ChassisNode() {  
+    if (odometry_thread_.joinable()) odometry_thread_.join();  
+    if (execute_thread_.joinable()) execute_thread_.join();  
+} 
+
 void ChassisNode::odometry_update_loop() {
     rclcpp::Rate loop_rate(100);  // 100 Hz update rate
     
@@ -136,6 +141,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         ultrasonic_driver_ = std::make_shared<Hardware::UltrasonicDriver>(left_us_cfg, right_us_cfg);
         if (!ultrasonic_driver_->initialize()) {
             RCLCPP_ERROR(this->get_logger(), "Ultrasonic Init Failed!");
+            ultrasonic_driver_.reset(); // Prevent odometry loop from using uninitialized ultrasonic driver
         }
     }
 
@@ -150,7 +156,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     }
 
     // Launch odometry update loop in a background thread
-    std::thread(&ChassisNode::odometry_update_loop, this).detach();
+    odometry_thread_ = std::thread(&ChassisNode::odometry_update_loop, this);
 
     this->action_server_ = rclcpp_action::create_server<Drive>(
         this, "drive_command",
