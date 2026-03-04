@@ -28,13 +28,26 @@ UltrasonicDriver::~UltrasonicDriver() {
 
 // Initalization Sequence
 bool UltrasonicDriver::initialize() {
+
+    // Initialize Right Sensor Pins
+    gpioSetMode(right_.trig_pin, PI_OUTPUT);
+    gpioWrite(right_.trig_pin, 0);
+    gpioSetMode(right_.echo_pin, PI_INPUT);
+
     // Initialize Left Sensor Pins
     gpioSetMode(left_.trig_pin, PI_OUTPUT);
-    gpioWrite(left_.trig_pin, 0); // Ensure trigger starts LOW
+    gpioWrite(left_.trig_pin, 0);
     gpioSetMode(left_.echo_pin, PI_INPUT);
-    if (gpioSetISRFuncEx(right_.echo_pin, EITHER_EDGE, 0, echoISR, (void*)this) < 0) {  
-        gpioSetISRFuncEx(left_.echo_pin, EITHER_EDGE, 0, nullptr, nullptr);  
-        return false;  
+
+    // Initalize Left Sensor
+    if (gpioSetISRFuncEx(left_.echo_pin, EITHER_EDGE, 0, echoISR, (void*)this) < 0) {
+        return false;
+    }
+
+    // Initalize Right Sensor
+    if (gpioSetISRFuncEx(right_.echo_pin, EITHER_EDGE, 0, echoISR, (void*)this) < 0) {
+        gpioSetISRFuncEx(left_.echo_pin, EITHER_EDGE, 0, nullptr, nullptr);
+        return false;
     }
 
     return true;

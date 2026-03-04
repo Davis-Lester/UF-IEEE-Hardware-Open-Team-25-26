@@ -6,9 +6,11 @@
 #include "hardware_team_robot/action/drive.hpp"
 #include "hardware_team_robot/sensors/MPU6050.h"
 #include "hardware_team_robot/mecanum_odometry.h"
-#include "hardware_team_robot/encoder_driver.h" 
+#include "hardware_team_robot/encoder_driver.h"
+#include "hardware_team_robot/ultrasonic_driver.h" // New Ultrasonic Header
 #include <pigpio.h>
 #include <atomic>
+#include <thread> 
 
 class ChassisNode : public rclcpp::Node {
 public:
@@ -22,8 +24,8 @@ public:
     void resetOdometry();
 
     ChassisNode();
-
     ~ChassisNode();  
+    
     std::thread odometry_thread_;  
     std::thread execute_thread_;
     
@@ -37,21 +39,14 @@ private:
     // Hardware abstraction for encoder and odometry 
     std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
     std::shared_ptr<Hardware::MecanumOdometry> odometry_;
+    
+    // Hardware abstraction for ultrasonic sensors
+    std::shared_ptr<Hardware::UltrasonicDriver> ultrasonic_driver_;
+
     void odometry_update_loop();  // Continuously reads encoders and updates odometry
 
     // --- Ultrasonic Odometry Correction ---
-    void correct_odometry_from_wall(float sensor_distance, float offset_x, float offset_y, float known_wall_y);
-    void setup_ultrasonic_sensors();
-    void handle_us_echo(int gpio, int level, uint32_t tick);
-    static void us_echo_isr_wrapper(int gpio, int level, uint32_t tick, void *user);
-
-    // Hardware timers for calculating the echo pulse width
-    uint32_t us_left_start_tick_ = 0;
-    uint32_t us_right_start_tick_ = 0;
-    
-    // Thread-safe storage for the latest calculated distances
-    std::atomic<float> us_left_distance_{-1.0f};
-    std::atomic<float> us_right_distance_{-1.0f};
+    float calculate_y_from_wall(const Hardware::MecanumOdometry::Pose& current_pose, float sensor_distance, float offset_x, float offset_y, float known_wall_y);
 
     // Callbacks
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal);
