@@ -56,6 +56,10 @@ private:
         }
 
         auto goal_handle = goal_handle_future.get();
+        if (!goal_handle) {
+            RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
+            return;
+        }
         auto result_future = this->client_ptr_->async_get_result(goal_handle);
 
         RCLCPP_INFO(this->get_logger(), "Executing %s...", mode.c_str());
