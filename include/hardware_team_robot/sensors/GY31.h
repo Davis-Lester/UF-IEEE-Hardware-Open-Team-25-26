@@ -38,7 +38,7 @@ public:
     bool initialize();
 
     // Reads raw frequency values for all 3 channels
-    // This is a blocking call (takes ~40-50ms total)
+    // This is a blocking call (takes ~70ms total)
     RGB readRGB();
 
     // Calibrate black/white levels (simple min/max normalization)
