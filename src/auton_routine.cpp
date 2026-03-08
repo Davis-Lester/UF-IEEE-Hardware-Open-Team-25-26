@@ -34,12 +34,12 @@ private:
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
 
-    // --- The "EZ" Wrapper Function ---
-    void wait_for_drive(double ticks, std::string mode) {
+    // Updated to use the standardized 'target_value'
+    void wait_for_drive(std::string mode, double target_value, double max_speed = 100.0) {
         auto goal_msg = Drive::Goal();
-        goal_msg.target_ticks = ticks;
         goal_msg.mode = mode;
-        goal_msg.max_speed = 100;
+        goal_msg.target_value = target_value; 
+        goal_msg.max_speed = max_speed;
 
         if (!this->client_ptr_->wait_for_action_server(std::chrono::seconds(2))) {
             RCLCPP_ERROR(this->get_logger(), "Action server not available!");
@@ -47,13 +47,8 @@ private:
         }
 
         auto send_goal_options = rclcpp_action::Client<Drive>::SendGoalOptions();
-        
-        // This is the "Blocking" part
-        // In standard ROS 2, we usually use callbacks. 
-        // For a linear script, we can use std::future to wait.
         auto goal_handle_future = this->client_ptr_->async_send_goal(goal_msg, send_goal_options);
         
-        // Wait for server to accept
         if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), goal_handle_future) !=
             rclcpp::FutureReturnCode::SUCCESS) {
             RCLCPP_ERROR(this->get_logger(), "Send goal failed");
@@ -61,12 +56,15 @@ private:
         }
 
         auto goal_handle = goal_handle_future.get();
+        if (!goal_handle) {
+            RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
+            return;
+        }
         auto result_future = this->client_ptr_->async_get_result(goal_handle);
 
-        // Wait for drive to complete
-        RCLCPP_INFO(this->get_logger(), "Driving...");
+        RCLCPP_INFO(this->get_logger(), "Executing %s...", mode.c_str());
         rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future);
-        RCLCPP_INFO(this->get_logger(), "Drive Complete.");
+        RCLCPP_INFO(this->get_logger(), "Action Complete.");
     }
 
     void run_routine() {

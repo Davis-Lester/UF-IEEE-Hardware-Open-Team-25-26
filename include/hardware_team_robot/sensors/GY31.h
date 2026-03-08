@@ -1,17 +1,6 @@
 #ifndef HARDWARE_TEAM_ROBOT_GY31_H
 #define HARDWARE_TEAM_ROBOT_GY31_H
 
-// Name: Davis Lester
-// Date: 3/2/2026
-// Description: Creating a Color Sensor Library for a ROS2 Robot
-
-// ╭━━━┳╮╱╱╭┳━━━╮╭╮╱╭━━━╮╱╱╭╮╱╱╱╱╱╱╭━━━╮
-// ┃╭━╮┃╰╮╭╯┃╭━╮┣╯┃╱┃╭━╮┃╱╱┃┃╱╱╱╱╱╱┃╭━╮┃
-// ┃┃╱╰┻╮╰╯╭┻╯╭╯┣╮┃╱┃┃╱╰╋━━┫┃╭━━┳━╮┃╰━━┳━━┳━╮╭━━┳━━┳━╮
-// ┃┃╭━╮╰╮╭╯╭╮╰╮┃┃┃╱┃┃╱╭┫╭╮┃┃┃╭╮┃╭╯╰━━╮┃┃━┫╭╮┫━━┫╭╮┃╭╯
-// ┃╰┻━┃╱┃┃╱┃╰━╯┣╯╰╮┃╰━╯┃╰╯┃╰┫╰╯┃┃╱┃╰━╯┃┃━┫┃┃┣━━┃╰╯┃┃
-// ╰━━━╯╱╰╯╱╰━━━┻━━╯╰━━━┻━━┻━┻━━┻╯╱╰━━━┻━━┻╯╰┻━━┻━━┻╯
-
 #include <cstdint>
 #include <atomic>
 
@@ -37,12 +26,14 @@ public:
     // Setup GPIO and Scaling
     bool initialize();
 
-    // Reads raw frequency values for all 3 channels
+    // Reads raw frequency values for all 3 channels + Clear
     // This is a blocking call (takes ~40-50ms total)
     RGB readRGB();
 
     // Calibrate black/white levels (simple min/max normalization)
+    // Place sensor on white surface and call this.
     void calibrateWhite();
+    // Place sensor on black surface and call this.
     void calibrateBlack();
 
 private:
@@ -59,8 +50,8 @@ private:
     static void pulseISR(int gpio, int level, uint32_t tick, void* user);
     void handlePulse();
 
-    // Atomic counter for the ISR (removed volatile)
-    std::atomic<int> pulse_count_{0};
+    // Atomic counter for the ISR
+    std::atomic<volatile int> pulse_count_{0};
 };
 
 #endif // HARDWARE_TEAM_ROBOT_GY31_H

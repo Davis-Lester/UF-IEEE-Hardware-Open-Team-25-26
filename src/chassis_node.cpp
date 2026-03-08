@@ -203,27 +203,29 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
             float gx, gy, gz;
             imu_.readGyro(&gx, &gy, &gz);
             current_val += (gz * dt);
-            error = goal->target_value - current_val;
+            error = goal->target_value - current_val; // UPDATED
         } 
         else if (is_strafing) {
+            // MECANUM STRAFE KINEMATICS
             double fl = std::abs(fl_ticks_.load());
             double fr = std::abs(fr_ticks_.load());
             double rl = std::abs(rl_ticks_.load());
             double rr = std::abs(rr_ticks_.load());
             
             double avg_ticks = (fl + fr + rl + rr) / 4.0;
-            if (goal->target_value < 0) avg_ticks = -avg_ticks;
+            if (goal->target_value < 0) avg_ticks = -avg_ticks; // UPDATED
             
             current_val = avg_ticks;
-            error = goal->target_value - current_val;
+            error = goal->target_value - current_val; // UPDATED
         } 
         else {
+            // STRAIGHT DRIVE
             double sum = std::abs(fl_ticks_) + std::abs(fr_ticks_) + std::abs(rl_ticks_) + std::abs(rr_ticks_);
             double avg_ticks = sum / 4.0;
-            if (goal->target_value < 0) avg_ticks = -avg_ticks;
+            if (goal->target_value < 0) avg_ticks = -avg_ticks; // UPDATED
             
             current_val = avg_ticks;
-            error = goal->target_value - current_val;
+            error = goal->target_value - current_val; // UPDATED
         }
 
         // --- PID OUTPUT ---
