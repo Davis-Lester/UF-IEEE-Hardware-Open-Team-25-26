@@ -74,6 +74,25 @@ void ChassisNode::odometry_update_loop() {
             // Update odometry with encoder data and IMU heading
             odometry_->update(fl, fr, rl, rr, heading_rad);
 
+            // --- START LIGHT DETECTION  ---
+            // Check for competition start light (ONE-TIME detection)
+            // Runs at 100 Hz until detected, then stops checking
+            if (start_light_sensor_ && !start_light_detected_) {
+                uint16_t white = start_light_sensor_->readWhite();
+                
+                // Detect 2x spike in WHITE channel = LED bars turned on
+                if (white > baseline_white_ * 2.0) {
+                    start_light_detected_ = true;
+                    RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
+                                white, baseline_white_);
+                    
+                    // Publish detection message to auton_routine
+                    auto msg = std_msgs::msg::Bool();
+                    msg.data = true;
+                    start_light_pub_->publish(msg);
+                }
+
+
             // --- Ultrasonic Correction Block (Runs at 10Hz) ---
             ultrasonic_counter++;
             if (ultrasonic_counter >= 10 && ultrasonic_driver_) { 
@@ -149,10 +168,20 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     odometry_ = std::make_shared<Hardware::MecanumOdometry>(177.8f, 237.5f, 60.0f);
     encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
     encoder_driver_->initialize();
-
+    //Init IMU
     if (imu_.initialize() == 0) {
         RCLCPP_INFO(this->get_logger(), "IMU Calibrating...");
         imu_.calibrate(500); 
+    }
+
+    // Initialize VEML7700 Start Light Sensor
+    start_light_sensor_ = std::make_shared<VEML7700>(1, 0x10);  // I2C bus 1, address 0x10
+    if (start_light_sensor_->begin(VEML7700_ALS_GAIN_1_8, VEML7700_ALS_IT_25MS)) {
+        // Capture baseline WHITE reading before LEDs turn on
+        baseline_white_ = start_light_sensor_->readWhite();
+        RCLCPP_INFO(this->get_logger(), "Start Light Sensor Ready. Baseline WHITE: %d counts", baseline_white_);
+    } else {
+        RCLCPP_ERROR(this->get_logger(), "Start Light Sensor Init Failed! %s", start_light_sensor_->getLastError().c_str());
     }
 
     // Launch odometry update loop in a background thread
@@ -337,7 +366,7 @@ rclcpp_action::CancelResponse ChassisNode::handle_cancel(const std::shared_ptr<G
 }
 
 void ChassisNode::handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle) {
-    std::thread{std::bind(&ChassisNode::execute, this, goal_handle)}.detach();
+    execute_thread_ = std::thread(std::bind(&ChassisNode::execute, this, goal_handle));
 }
 
 int main(int argc, char * argv[]) {

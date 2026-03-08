@@ -7,10 +7,14 @@
 #include "hardware_team_robot/sensors/MPU6050.h"
 #include "hardware_team_robot/mecanum_odometry.h"
 #include "hardware_team_robot/encoder_driver.h"
-#include "hardware_team_robot/ultrasonic_driver.h" // New Ultrasonic Header
+#include "hardware_team_robot/UltrasonicDistance.h" // New Ultrasonic Header
+#include "hardware_team_robot/sensors/VEML7700.h"  
+#include "std_msgs/msg/bool.hpp"
 #include <pigpio.h>
 #include <atomic>
 #include <thread> 
+
+
 
 class ChassisNode : public rclcpp::Node {
 public:
@@ -22,6 +26,10 @@ public:
     Hardware::MecanumOdometry::Pose getOdometryPose() const;
     // Reset odometry to origin
     void resetOdometry();
+
+    // Start Light Detection Interface
+    bool isStartLightDetected() const { return start_light_detected_; }
+
 
     ChassisNode();
     ~ChassisNode();
@@ -44,11 +52,16 @@ private:
     // Hardware abstraction for ultrasonic sensors
     std::shared_ptr<Hardware::UltrasonicDriver> ultrasonic_driver_;
 
+    // VEML7700 light sensor for detecting start LED bar
+    std::shared_ptr<VEML7700> start_light_sensor_;
+    std::atomic<bool> start_light_detected_{false};
+    uint16_t baseline_white_{0};  // Baseline WHITE reading before LEDs turn on
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr start_light_pub_;
+
     void odometry_update_loop();  // Continuously reads encoders and updates odometry
 
     // --- Ultrasonic Odometry Correction ---
     float calculate_y_from_wall(const Hardware::MecanumOdometry::Pose& current_pose, float sensor_distance, float offset_x, float offset_y, float known_wall_y);
-
     // Callbacks
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal);
     rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleDrive> goal_handle);
@@ -96,6 +109,12 @@ private:
     static constexpr int PIN_FR_ENC_A = 22, PIN_FR_ENC_B = 4; 
     static constexpr int PIN_RL_ENC_A = 26, PIN_RL_ENC_B = 21;
     static constexpr int PIN_RR_ENC_A = 9,  PIN_RR_ENC_B = 11;
+
+    // ==================== VEML7700 NOTES ====================
+    // VEML7700 uses I2C Bus 1 (shared with MPU6050)
+    // Address: 0x10 (no GPIO pins needed)
+    // Purpose: ONE-TIME detection of competition start LED bars
+    // ========================================================
 };
 
 #endif // HARDWARE_TEAM_ROBOT_CHASSIS_NODE_H

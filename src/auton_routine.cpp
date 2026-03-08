@@ -15,6 +15,7 @@
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "hardware_team_robot/action/drive.hpp"
 #include "std_msgs/msg/u_int8.hpp"
+#include "std_msgs/msg/bool.hpp"
 
 using Drive = hardware_team_robot::action::Drive;
 
@@ -24,15 +25,42 @@ public:
         this->client_ptr_ = rclcpp_action::create_client<Drive>(this, "drive_command");
         this->ir_pub_ = this->create_publisher<std_msgs::msg::UInt8>("ir_command", 10);
         
-        // Start the routine on a timer so the constructor finishes quickly
+        // Subscribe to start light topic from chassis node
+        this->start_light_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+            "/start_light_detected", 10,
+            std::bind(&AutonRoutine::start_light_callback, this, std::placeholders::_1));
+        
+        RCLCPP_INFO(this->get_logger(), "🤖 Waiting for competition start light...");
+        
+        // Check for start signal every 50ms instead of starting after 1 second
         timer_ = this->create_wall_timer(
-            std::chrono::seconds(1), std::bind(&AutonRoutine::run_routine, this));
+            std::chrono::milliseconds(50), 
+            std::bind(&AutonRoutine::check_and_run, this));
     }
 
 private:
     rclcpp_action::Client<Drive>::SharedPtr client_ptr_;
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
+
+    // --- VEML7700 START LIGHT DETECTION ---
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
+    bool start_detected_{false};
+    
+    void start_light_callback(const std_msgs::msg::Bool::SharedPtr msg) {
+        if (msg->data && !start_detected_) {
+            start_detected_ = true;
+            RCLCPP_INFO(this->get_logger(), "🚦 START LIGHT DETECTED!");
+        }
+    }
+    
+    void check_and_run() {
+        if (start_detected_) {
+            timer_->cancel();  // Stop checking
+            run_routine();     // Start autonomous
+        }
+    }
+
 
     // Updated to use the standardized 'target_value'
     void wait_for_drive(std::string mode, double target_value, double max_speed = 100.0) {
