@@ -74,14 +74,10 @@ public:
     
     
     bool readALS(uint16_t& value);
-    
+
     bool readWhite(uint16_t& value);
     
-    /**
-     * @brief Read calculated lux value from ALS channel
-     * @return Ambient light in lux
-     */
-    float readLux();
+    bool readLux(float& lux);
     
     /**
      * @brief Power down the sensor

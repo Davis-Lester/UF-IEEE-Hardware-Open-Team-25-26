@@ -113,9 +113,13 @@ bool VEML7700::readWhite(uint16_t& value) {
 }
 
 
-float VEML7700::readLux() {
-    uint16_t raw_als = readALS();
-    return calculateLux(raw_als);
+bool VEML7700::readLux(float& lux) {
+    uint16_t raw_als = 0;
+    if (!readALS(raw_als)) {  // FIXED: Use bool return API
+        return false;
+    }
+    lux = calculateLux(raw_als);  // FIXED: Assign to out parameter
+    return true;
 }
 
 void VEML7700::powerDown() {

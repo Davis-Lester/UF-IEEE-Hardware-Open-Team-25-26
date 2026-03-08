@@ -385,7 +385,16 @@ void ChassisNode::stop_motors() {
 }
 
 // Action callbacks
-rclcpp_action::GoalResponse ChassisNode::handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal) {
+rclcpp_action::GoalResponse ChassisNode::handle_goal(
+    const rclcpp_action::GoalUUID & uuid, 
+    std::shared_ptr<const Drive::Goal> goal) {
+    
+    //Reject if previous execution still running
+    if (execute_thread_.joinable()) {
+        RCLCPP_WARN(this->get_logger(), "Goal rejected - previous action still executing");
+        return rclcpp_action::GoalResponse::REJECT;
+    }
+    
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
