@@ -3,7 +3,7 @@
 // Description: VEML7700 Ambient Light Sensor Library
 
 
-#include "VEML7700.h"
+#include "hardware_team_robot/sensors/VEML7700.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>

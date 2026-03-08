@@ -11,11 +11,8 @@
 //╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╭━╯┃
 //╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╰━━╯
 
-#include "rclcpp/rclcpp.hpp"
-#include "rclcpp_action/rclcpp_action.hpp"
-#include "hardware_team_robot/action/drive.hpp"
-#include "std_msgs/msg/u_int8.hpp"
-#include "std_msgs/msg/bool.hpp"
+#include "hardware_team_robot/auton_routine.h"
+
 
 using Drive = hardware_team_robot::action::Drive;
 
@@ -25,17 +22,16 @@ public:
         this->client_ptr_ = rclcpp_action::create_client<Drive>(this, "drive_command");
         this->ir_pub_ = this->create_publisher<std_msgs::msg::UInt8>("ir_command", 10);
         
-        // Subscribe to start light topic from chassis node
         this->start_light_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-            "/start_light_detected", 10,
-            std::bind(&AutonRoutine::start_light_callback, this, std::placeholders::_1));
-        
-        RCLCPP_INFO(this->get_logger(), "🤖 Waiting for competition start light...");
-        
-        // Check for start signal every 50ms instead of starting after 1 second
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(50), 
-            std::bind(&AutonRoutine::check_and_run, this));
+        "/start_light_detected", 10,
+        std::bind(&AutonRoutine::start_light_callback, this, std::placeholders::_1));
+    
+    RCLCPP_INFO(this->get_logger(), "Waiting for competition start light...");
+    
+    // Check for start signal every 50ms
+    timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(50), 
+        std::bind(&AutonRoutine::check_and_run, this));
     }
 
 private:
@@ -50,7 +46,7 @@ private:
     void start_light_callback(const std_msgs::msg::Bool::SharedPtr msg) {
         if (msg->data && !start_detected_) {
             start_detected_ = true;
-            RCLCPP_INFO(this->get_logger(), "🚦 START LIGHT DETECTED!");
+            RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED!");
         }
     }
     
@@ -101,7 +97,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "--- STARTING AUTONOMOUS ---");
 
         // 1. Drive Forward
-        wait_for_drive(1000.0, "DRIVE");
+        wait_for_drive("DRIVE", 1000.0);
 
         // 2. Fire IR (Antenna 3, Blue)
         auto msg = std_msgs::msg::UInt8();
@@ -110,10 +106,10 @@ private:
         RCLCPP_INFO(this->get_logger(), "IR Fired.");
 
         // 3. Turn 
-        wait_for_drive(90.0, "TURN");
+        wait_for_drive("TURN", 90.0);
 
         // 4. Drive Backward
-        wait_for_drive(-1000.0, "DRIVE");
+        wait_for_drive("DRIVE", -1000.0);
 
         RCLCPP_INFO(this->get_logger(), "--- AUTONOMOUS FINISHED ---");
     }

@@ -57,6 +57,12 @@ public:
      */
     ~VEML7700();
     
+    // -- Prevent copy/move to avoid double close of i2c_fd_ --
+    VEML7700(const VEML7700&) = delete;
+    VEML7700& operator=(const VEML7700&) = delete;
+    VEML7700(VEML7700&&) = delete;
+    VEML7700& operator=(VEML7700&&) = delete;
+
     /**
      * @brief Initialize and configure the sensor with device ID verification
      * @param gain Gain setting (use VEML7700_ALS_GAIN_* constants)
