@@ -43,7 +43,9 @@ VEML7700::VEML7700(int i2c_bus, uint8_t address)
 
 VEML7700::~VEML7700() {
     if (i2c_fd_ >= 0) {
-        powerDown();  // Put sensor to sleep before closing
+        if (!powerDown()) {
+            // Error already stored in last_error_ by writeRegister
+        }
         close(i2c_fd_);
     }
 }
@@ -122,14 +124,14 @@ bool VEML7700::readLux(float& lux) {
     return true;
 }
 
-void VEML7700::powerDown() {
+bool VEML7700::powerDown() {
     uint16_t config = current_gain_ | current_it_ | VEML7700_ALS_SHUTDOWN;
-    writeRegister(VEML7700_REG_ALS_CONF, config);
+    return writeRegister(VEML7700_REG_ALS_CONF, config);
 }
 
-void VEML7700::powerUp() {
+bool VEML7700::powerUp() {
     uint16_t config = current_gain_ | current_it_ | VEML7700_ALS_POWER_ON;
-    writeRegister(VEML7700_REG_ALS_CONF, config);
+    return writeRegister(VEML7700_REG_ALS_CONF, config);
 }
 
 bool VEML7700::writeRegister(uint8_t reg, uint16_t value) {
@@ -166,9 +168,9 @@ float VEML7700::getResolution() {
     // Values are measured and documented by Vishay for Gain x2
     // Other gains are calculated proportionally based on gain ratios
     
-    float base_resolution = 0.2688f;  // Default fallback (gain x1/8, IT 100ms)
+    float base_resolution = 0.2688f;  // Default fallback (gain x1/4, IT 100ms)
     
-    // Gain x2 values from datasheet (page 9)
+    // Gain x2 values from datasheet (canonical values) [1]
     if (current_gain_ == VEML7700_ALS_GAIN_2) {
         if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0042f;
         if (current_it_ == VEML7700_ALS_IT_400MS) return 0.0084f;
@@ -188,17 +190,7 @@ float VEML7700::getResolution() {
         if (current_it_ == VEML7700_ALS_IT_25MS) return 0.2688f;
     }
     
-     //Gain x1/8 is 16x the gain x2 values
-    if (current_gain_ == VEML7700_ALS_GAIN_1_8) {
-        if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0672f;   // 0.0042 * 16
-        if (current_it_ == VEML7700_ALS_IT_400MS) return 0.1344f;   // 0.0084 * 16
-        if (current_it_ == VEML7700_ALS_IT_200MS) return 0.2688f;   // 0.0168 * 16
-        if (current_it_ == VEML7700_ALS_IT_100MS) return 0.5376f;   // 0.0336 * 16
-        if (current_it_ == VEML7700_ALS_IT_50MS) return 1.0752f;    // 0.0672 * 16
-        if (current_it_ == VEML7700_ALS_IT_25MS) return 2.1504f;    // 0.1344 * 16
-    }
-    
-    //Gain x1/4 is 8x the gain x2 values
+    // Gain x1/4 (multiply gain x2 values by 8)
     if (current_gain_ == VEML7700_ALS_GAIN_1_4) {
         if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0336f;   // 0.0042 * 8
         if (current_it_ == VEML7700_ALS_IT_400MS) return 0.0672f;   // 0.0084 * 8
@@ -208,6 +200,15 @@ float VEML7700::getResolution() {
         if (current_it_ == VEML7700_ALS_IT_25MS) return 1.0752f;    // 0.1344 * 8
     }
     
-    // Fallback
+    // Gain x1/8 (multiply gain x2 values by 16)
+    if (current_gain_ == VEML7700_ALS_GAIN_1_8) {
+        if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0672f;   // 0.0042 * 16
+        if (current_it_ == VEML7700_ALS_IT_400MS) return 0.1344f;   // 0.0084 * 16
+        if (current_it_ == VEML7700_ALS_IT_200MS) return 0.2688f;   // 0.0168 * 16
+        if (current_it_ == VEML7700_ALS_IT_100MS) return 0.5376f;   // 0.0336 * 16
+        if (current_it_ == VEML7700_ALS_IT_50MS) return 1.0752f;    // 0.0672 * 16
+        if (current_it_ == VEML7700_ALS_IT_25MS) return 2.1504f;    // 0.1344 * 16
+    }
+    
     return base_resolution;
 }

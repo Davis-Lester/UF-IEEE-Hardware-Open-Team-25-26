@@ -82,12 +82,12 @@ public:
     /**
      * @brief Power down the sensor
      */
-    void powerDown();
+    bool powerDown();
     
     /**
      * @brief Power up the sensor
      */
-    void powerUp();
+    bool powerUp();
     
     /**
      * @brief Check if sensor is initialized
