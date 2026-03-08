@@ -188,7 +188,7 @@ float VEML7700::getResolution() {
         if (current_it_ == VEML7700_ALS_IT_25MS) return 0.2688f;
     }
     
-     //Gain x1/4 is 16x the gain x2 values
+     //Gain x1/8 is 16x the gain x2 values
     if (current_gain_ == VEML7700_ALS_GAIN_1_8) {
         if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0672f;   // 0.0042 * 16
         if (current_it_ == VEML7700_ALS_IT_400MS) return 0.1344f;   // 0.0084 * 16
