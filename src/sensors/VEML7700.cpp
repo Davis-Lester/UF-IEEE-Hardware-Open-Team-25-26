@@ -104,21 +104,14 @@ bool VEML7700::verifyDeviceID() {
     return true;
 }
 
-uint16_t VEML7700::readALS() {
-    uint16_t value = 0;
-    if (!readRegister(VEML7700_REG_ALS, &value)) {
-        return 0;
-    }
-    return value;
+bool VEML7700::readALS(uint16_t& value) {
+    return readRegister(VEML7700_REG_ALS, &value);
 }
 
-uint16_t VEML7700::readWhite() {
-    uint16_t value = 0;
-    if (!readRegister(VEML7700_REG_WHITE, &value)) {
-        return 0;
-    }
-    return value;
+bool VEML7700::readWhite(uint16_t& value) {
+    return readRegister(VEML7700_REG_WHITE, &value);
 }
+
 
 float VEML7700::readLux() {
     uint16_t raw_als = readALS();
@@ -191,24 +184,24 @@ float VEML7700::getResolution() {
         if (current_it_ == VEML7700_ALS_IT_25MS) return 0.2688f;
     }
     
-    // Gain x1/8 (divide gain x2 values by 4)
+     //Gain x1/4 is 16x the gain x2 values
     if (current_gain_ == VEML7700_ALS_GAIN_1_8) {
-        if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0336f;
-        if (current_it_ == VEML7700_ALS_IT_400MS) return 0.0672f;
-        if (current_it_ == VEML7700_ALS_IT_200MS) return 0.1344f;
-        if (current_it_ == VEML7700_ALS_IT_100MS) return 0.2688f;
-        if (current_it_ == VEML7700_ALS_IT_50MS) return 0.5376f;
-        if (current_it_ == VEML7700_ALS_IT_25MS) return 1.0752f;
+        if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0672f;   // 0.0042 * 16
+        if (current_it_ == VEML7700_ALS_IT_400MS) return 0.1344f;   // 0.0084 * 16
+        if (current_it_ == VEML7700_ALS_IT_200MS) return 0.2688f;   // 0.0168 * 16
+        if (current_it_ == VEML7700_ALS_IT_100MS) return 0.5376f;   // 0.0336 * 16
+        if (current_it_ == VEML7700_ALS_IT_50MS) return 1.0752f;    // 0.0672 * 16
+        if (current_it_ == VEML7700_ALS_IT_25MS) return 2.1504f;    // 0.1344 * 16
     }
     
-    // Gain x1/4 (divide gain x2 values by 2)
+    //Gain x1/4 is 8x the gain x2 values
     if (current_gain_ == VEML7700_ALS_GAIN_1_4) {
-        if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0168f;
-        if (current_it_ == VEML7700_ALS_IT_400MS) return 0.0336f;
-        if (current_it_ == VEML7700_ALS_IT_200MS) return 0.0672f;
-        if (current_it_ == VEML7700_ALS_IT_100MS) return 0.1344f;
-        if (current_it_ == VEML7700_ALS_IT_50MS) return 0.2688f;
-        if (current_it_ == VEML7700_ALS_IT_25MS) return 0.5376f;
+        if (current_it_ == VEML7700_ALS_IT_800MS) return 0.0336f;   // 0.0042 * 8
+        if (current_it_ == VEML7700_ALS_IT_400MS) return 0.0672f;   // 0.0084 * 8
+        if (current_it_ == VEML7700_ALS_IT_200MS) return 0.1344f;   // 0.0168 * 8
+        if (current_it_ == VEML7700_ALS_IT_100MS) return 0.2688f;   // 0.0336 * 8
+        if (current_it_ == VEML7700_ALS_IT_50MS) return 0.5376f;    // 0.0672 * 8
+        if (current_it_ == VEML7700_ALS_IT_25MS) return 1.0752f;    // 0.1344 * 8
     }
     
     // Fallback

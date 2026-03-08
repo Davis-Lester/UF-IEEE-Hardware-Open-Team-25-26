@@ -72,18 +72,10 @@ public:
     bool begin(uint16_t gain = VEML7700_ALS_GAIN_1_8, 
                uint16_t integration_time = VEML7700_ALS_IT_25MS);
     
-    /**
-     * @brief Read raw ALS value (0-65535)
-     * @return Raw ALS count value
-     */
-    uint16_t readALS();
     
-    /**
-     * @brief Read raw white channel value (0-65535)
-     * RECOMMENDED for LED detection - more sensitive to white LED spikes
-     * @return Raw white channel count value
-     */
-    uint16_t readWhite();
+    bool readALS(uint16_t& value);
+    
+    bool readWhite(uint16_t& value);
     
     /**
      * @brief Read calculated lux value from ALS channel
