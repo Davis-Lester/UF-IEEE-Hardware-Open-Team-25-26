@@ -1,0 +1,9 @@
+# Goal: What the Auton Routine wants
+---
+# Result: What the Camera found
+# Sent once when the color is detected and transmitted to IR
+bool success
+string detected_color
+---
+# Feedback: Sent continuously during the search
+
