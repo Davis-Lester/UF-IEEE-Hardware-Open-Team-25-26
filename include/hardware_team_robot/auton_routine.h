@@ -34,13 +34,10 @@ private:
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
 
+    void check_start_condition();
     // Start Light Detection Subscriber
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
     bool start_detected_{false};
-    
-    
-    // Callbacks
-    void check_start_condition();
     
     // Routine Logic
     void run_routine();
@@ -50,7 +47,6 @@ private:
     
     void start_light_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void check_and_run(); 
-
 };
 
 #endif // AUTON_ROUTINE_H

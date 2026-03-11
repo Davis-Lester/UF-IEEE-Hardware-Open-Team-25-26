@@ -5,5 +5,5 @@
 bool success
 string detected_color
 ---
-# Feedback: Sent continuously during the search
+# Feedback: No feedback
 

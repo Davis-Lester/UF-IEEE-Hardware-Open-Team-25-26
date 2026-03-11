@@ -47,35 +47,35 @@ void AutonRoutine::check_and_run() {
 
 // Updated to use the standardized 'target_value'
 void AutonRoutine::wait_for_drive(std::string mode, double target_value, double max_speed) {
-    auto goal_msg = Drive::Goal();
-    goal_msg.mode = mode;
-    goal_msg.target_value = target_value; 
-    goal_msg.max_speed = max_speed;
+        auto goal_msg = Drive::Goal();
+        goal_msg.mode = mode;
+        goal_msg.target_value = target_value; 
+        goal_msg.max_speed = max_speed;
 
-    if (!this->client_ptr_->wait_for_action_server(std::chrono::seconds(2))) {
-        RCLCPP_ERROR(this->get_logger(), "Action server not available!");
-        return;
-    }
+        if (!this->client_ptr_->wait_for_action_server(std::chrono::seconds(2))) {
+            RCLCPP_ERROR(this->get_logger(), "Action server not available!");
+            return;
+        }
 
-    auto send_goal_options = rclcpp_action::Client<Drive>::SendGoalOptions();
-    auto goal_handle_future = this->client_ptr_->async_send_goal(goal_msg, send_goal_options);
-    
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), goal_handle_future) !=
-        rclcpp::FutureReturnCode::SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "Send goal failed");
-        return;
-    }
+        auto send_goal_options = rclcpp_action::Client<Drive>::SendGoalOptions();
+        auto goal_handle_future = this->client_ptr_->async_send_goal(goal_msg, send_goal_options);
+        
+        if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), goal_handle_future) !=
+            rclcpp::FutureReturnCode::SUCCESS) {
+            RCLCPP_ERROR(this->get_logger(), "Send goal failed");
+            return;
+        }
 
-    auto goal_handle = goal_handle_future.get();
-    if (!goal_handle) {
-        RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
-        return;
-    }
-    auto result_future = this->client_ptr_->async_get_result(goal_handle);
+        auto goal_handle = goal_handle_future.get();
+        if (!goal_handle) {
+            RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
+            return;
+        }
+        auto result_future = this->client_ptr_->async_get_result(goal_handle);
 
-    RCLCPP_INFO(this->get_logger(), "Executing %s...", mode.c_str());
-    rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future);
-    RCLCPP_INFO(this->get_logger(), "Action Complete.");
+        RCLCPP_INFO(this->get_logger(), "Executing %s...", mode.c_str());
+        rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future);
+        RCLCPP_INFO(this->get_logger(), "Action Complete.");
 }
 
 void AutonRoutine::run_routine() {
