@@ -37,9 +37,7 @@ public:
             {'#',{1800,1100}}
         };
 
-        home();
-
-        return true;
+        return home();
     }
 
     void press_digit(char digit)
