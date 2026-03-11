@@ -57,13 +57,14 @@ public:
         press();
     }
 
-    void home()
-    {
+    bool KeypadServo::home()
+{
+    int ret_x = gpioServo(servo_x_, 1500);
+    int ret_y = gpioServo(servo_y_, 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    
+    return (ret_x >= 0 && ret_y >= 0);
 
-        gpioServo(servo_x_,1500);
-        gpioServo(servo_y_,1000);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
 private:
