@@ -55,7 +55,7 @@ public:
         press();
     }
 
-    bool KeypadServo::home()
+    bool home()
 {
     int ret_x = gpioServo(servo_x_, 1500);
     int ret_y = gpioServo(servo_y_, 1000);
