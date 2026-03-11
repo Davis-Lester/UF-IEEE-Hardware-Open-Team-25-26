@@ -4,9 +4,10 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstdint>
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/u_int8.hpp"
 #include "cv_bridge/cv_bridge.hpp"
 #include "opencv2/opencv.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -20,6 +21,7 @@ struct HSVRange {
 struct ColorTargets {
     std::string name;
     std::vector<HSVRange> ranges;
+    uint8_t colorCode;
 };
 
 class CameraProcessor : public rclcpp::Node {
@@ -30,8 +32,15 @@ public:
     CameraProcessor();
 
 private:
+    // to time out if unresponsive
     rclcpp::Time start_time_;
     double timeout_seconds_ = 10.0; // 10 second limit
+    rclcpp::TimerBase::SharedPtr timeout_timer_;
+    void check_timeout();
+
+    // vector of colors to be checked by camera
+    std::vector<ColorTargets> targets_;
+
     // Image processing
     void image_callback(const sensor_msgs::msg::Image::SharedPtr msg);
 
@@ -47,7 +56,7 @@ private:
 
     // ROS Members
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subscription_;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr ir_publisher_;
+    rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_publisher_;
     rclcpp_action::Server<FindColor>::SharedPtr action_server_;
 
     // State management

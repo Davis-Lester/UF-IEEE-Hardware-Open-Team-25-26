@@ -64,7 +64,7 @@ ament_target_dependencies(ir_node rclcpp std_msgs)
 add_executable(camera_node src/camera_node.cpp)
 target_link_libraries(camera_node sensor_lib ${PIGPIO_LIB} ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
 add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
-ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge)
+ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
 
 # Odometry test node
 add_executable(odom_test_node src/odometry_test.cpp)
