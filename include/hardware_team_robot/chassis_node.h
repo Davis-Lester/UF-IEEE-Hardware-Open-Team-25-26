@@ -5,9 +5,9 @@
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "hardware_team_robot/action/drive.hpp"
 #include "hardware_team_robot/sensors/MPU6050.h"
-#include "hardware_team_robot/mecanum_odometry.h"
+#include "hardware_team_robot/tank_odometry.h"
 #include "hardware_team_robot/encoder_driver.h"
-#include "hardware_team_robot/UltrasonicDistance.h" // New Ultrasonic Header
+#include "hardware_team_robot/sensors/UltrasonicDistance.h"
 #include "hardware_team_robot/sensors/VEML7700.h"  
 #include "std_msgs/msg/bool.hpp"
 #include <pigpio.h>
@@ -23,7 +23,7 @@ public:
 
     // Odometry System Interface 
     // Get current position/heading from odometry system
-    Hardware::MecanumOdometry::Pose getOdometryPose() const;
+    Hardware::TankOdometry::Pose getOdometryPose() const;
     // Reset odometry to origin
     void resetOdometry();
 
@@ -47,7 +47,7 @@ private:
 
     // Hardware abstraction for encoder and odometry 
     std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
-    std::shared_ptr<Hardware::MecanumOdometry> odometry_;
+    std::shared_ptr<Hardware::TankOdometry> odometry_;
     
     // Hardware abstraction for ultrasonic sensors
     std::shared_ptr<Hardware::UltrasonicDriver> ultrasonic_driver_;
@@ -62,8 +62,7 @@ private:
     void odometry_update_loop();  // Continuously reads encoders and updates odometry
 
     // --- Ultrasonic Odometry Correction ---
-    float calculate_y_from_wall(const Hardware::MecanumOdometry::Pose& current_pose, float sensor_distance, float offset_x, float offset_y, float known_wall_y);
-    // Callbacks
+    float calculate_y_from_wall(const Hardware::TankOdometry::Pose& current_pose, float sensor_distance, float offset_x, float offset_y, float known_wall_y);    // Callbacks
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal);
     rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleDrive> goal_handle);
     void handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle);
@@ -79,7 +78,7 @@ private:
     // --- MOTORS (4 Wheels) ---
     void setup_motor_pins();
     // New: Individual control for mixing
-    void set_mecanum_power(double fl, double fr, double rl, double rr);
+    void set_tank_power(double left, double right); 
     void stop_motors();
 
     // --- PIN DEFINITIONS & CONSTANTS ---

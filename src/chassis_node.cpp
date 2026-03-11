@@ -14,7 +14,7 @@ static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) 
     node->handle_encoder_tick(gpio, level);
 }
 
-Hardware::MecanumOdometry::Pose ChassisNode::getOdometryPose() const {
+Hardware::TankOdometry::Pose ChassisNode::getOdometryPose() const {
     if (odometry_) {
         return odometry_->getCurrentPose();
     }
@@ -28,9 +28,9 @@ void ChassisNode::resetOdometry() {
     }
 }
 
-float ChassisNode::calculate_y_from_wall(const Hardware::MecanumOdometry::Pose& current_pose, float sensor_distance, float offset_x, float offset_y, float known_wall_y) {
+float ChassisNode::calculate_y_from_wall(const Hardware::TankOdometry::Pose& current_pose, 
+                                         float sensor_distance, float offset_x, float offset_y, float known_wall_y) {
     float theta = current_pose.theta_rad;
-    // Apply the 2D transformation matrix to find the robot's true Y center
     return known_wall_y - (offset_x * std::sin(theta)) - ((offset_y + sensor_distance) * std::cos(theta));
 }
 
@@ -84,7 +84,7 @@ void ChassisNode::odometry_update_loop() {
                     // Use floating-point ratio to avoid overflow when baseline_white_ >= 32768
                     if (baseline_white_ > 0 && (static_cast<double>(white) / static_cast<double>(baseline_white_)) > 2.0) {
                         start_light_detected_ = true;
-                        RCLCPP_INFO(this->get_logger(), "🚦 START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
+                        RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
                                     white, baseline_white_);
                         
                         auto msg = std_msgs::msg::Bool();
@@ -107,7 +107,7 @@ void ChassisNode::odometry_update_loop() {
                 bool right_valid = (right_dist > 0.0f && right_dist < 24.0f);
 
                 if (left_valid || right_valid) {
-                    Hardware::MecanumOdometry::Pose current_pose = odometry_->getCurrentPose();
+                    Hardware::TankOdometry::Pose current_pose = odometry_->getCurrentPose();
                     float new_y = current_pose.y_inches;
                     bool update_needed = false;
 
@@ -167,7 +167,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     }
 
     // Default chassis dimensions for MecanumOdometry
-    odometry_ = std::make_shared<Hardware::MecanumOdometry>(177.8f, 237.5f, 60.0f);
+    odometry_ = std::make_shared<Hardware::TankOdometry>(237.49f, 177.8f, 80.0f);
     encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
     encoder_driver_->initialize();
     //Init IMU
@@ -196,15 +196,15 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         
         if (valid_samples > 0) {
             baseline_white_ = sum / valid_samples;
-            RCLCPP_INFO(this->get_logger(), "✅ Start Light Sensor Ready. Baseline WHITE: %d counts (%d/%d samples)", 
+            RCLCPP_INFO(this->get_logger(), "Start Light Sensor Ready. Baseline WHITE: %d counts (%d/%d samples)", 
                         baseline_white_, valid_samples, num_samples);
         } else {
             start_light_disabled_ = true;
-            RCLCPP_WARN(this->get_logger(), "⚠️  Start Light Sensor baseline failed - detection DISABLED");
+            RCLCPP_WARN(this->get_logger(), "Start Light Sensor baseline failed - detection DISABLED");
         }
     } else {
         start_light_disabled_ = true;
-        RCLCPP_ERROR(this->get_logger(), "❌ Start Light Sensor Init Failed! %s", 
+        RCLCPP_ERROR(this->get_logger(), "Start Light Sensor Init Failed! %s", 
                      start_light_sensor_->getLastError().c_str());
     }
     
@@ -237,7 +237,6 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
     
     // Determine Control Mode
     bool is_turning = (goal->mode == "TURN");
-    bool is_strafing = (goal->mode == "STRAFE");
 
     // Tuning
     if (is_turning) kp = 2.0;
@@ -254,73 +253,56 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
             goal_handle->canceled(result);
             return;
         }
-
-        // --- SENSOR READING & ERROR CALC ---
+        
         if (is_turning) {
             float gx, gy, gz;
             imu_.readGyro(&gx, &gy, &gz);
             current_val += (gz * dt);
-            error = goal->target_value - current_val; // UPDATED
-        } 
-        else if (is_strafing) {
-            // MECANUM STRAFE KINEMATICS
-            double fl = std::abs(fl_ticks_.load());
-            double fr = std::abs(fr_ticks_.load());
-            double rl = std::abs(rl_ticks_.load());
-            double rr = std::abs(rr_ticks_.load());
-            
-            double avg_ticks = (fl + fr + rl + rr) / 4.0;
-            if (goal->target_value < 0) avg_ticks = -avg_ticks; // UPDATED
-            
-            current_val = avg_ticks;
-            error = goal->target_value - current_val; // UPDATED
+            error = goal->target_value - current_val;
         } 
         else {
-            // STRAIGHT DRIVE
+            // TANK DRIVE: Average all 4 wheels for forward/backward
             double sum = std::abs(fl_ticks_) + std::abs(fr_ticks_) + std::abs(rl_ticks_) + std::abs(rr_ticks_);
             double avg_ticks = sum / 4.0;
-            if (goal->target_value < 0) avg_ticks = -avg_ticks; // UPDATED
+            if (goal->target_value < 0) avg_ticks = -avg_ticks;
             
             current_val = avg_ticks;
-            error = goal->target_value - current_val; // UPDATED
+            error = goal->target_value - current_val;
         }
-
-        // --- PID OUTPUT ---
-        double output = error * kp;
         
-        // Clamp Speed
+        double output = error * kp;
         if (output > goal->max_speed) output = goal->max_speed;
         if (output < -goal->max_speed) output = -goal->max_speed;
-
-        // --- MIXING & MOTOR OUTPUT ---
+        
+        // ========== Tank drive motor mixing (left/right only) ==========
         if (is_turning) {
-            set_mecanum_power(-output, output, -output, output);
-        } 
-        else if (is_strafing) {
-            set_mecanum_power(output, -output, -output, output);
+            // Turn in place: left backward, right forward
+            set_tank_power(-output, output);
         } 
         else {
-            set_mecanum_power(output, output, output, output);
+            // Drive straight: both sides same speed
+            set_tank_power(output, output);
         }
-
-        // --- SETTLE ---
+        // ========================================================================
+        
         double tolerance = is_turning ? 2.0 : 25.0;
         if (std::abs(error) < tolerance) settled_count++;
         else settled_count = 0;
-
+        
         if (settled_count > 10) break;
-
+        
         feedback->current_error = error;
         goal_handle->publish_feedback(feedback);
         loop_rate.sleep();
     }
-
+    
     stop_motors();
     result->success = true;
     goal_handle->succeed(result);
-}
+}  
 
-void ChassisNode::set_mecanum_power(double fl, double fr, double rl, double rr) {
+// ========== Simplified tank drive control (4 wheels: 2 per side) ==========
+void ChassisNode::set_tank_power(double left, double right) {
     auto write_motor = [](int pwm_pin, int in1, int in2, double speed) {
         int pwm_val = std::clamp((int)speed, -255, 255);
         if (pwm_val > 0) {
@@ -332,11 +314,14 @@ void ChassisNode::set_mecanum_power(double fl, double fr, double rl, double rr) 
         }
         gpioPWM(pwm_pin, std::abs(pwm_val));
     };
-
-    write_motor(PIN_FL_PWM, PIN_FL_IN1, PIN_FL_IN2, fl);
-    write_motor(PIN_FR_PWM, PIN_FR_IN1, PIN_FR_IN2, fr);
-    write_motor(PIN_RL_PWM, PIN_RL_IN1, PIN_RL_IN2, rl);
-    write_motor(PIN_RR_PWM, PIN_RR_IN1, PIN_RR_IN2, rr);
+    
+    // Left side: FL + RL
+    write_motor(PIN_FL_PWM, PIN_FL_IN1, PIN_FL_IN2, left);
+    write_motor(PIN_RL_PWM, PIN_RL_IN1, PIN_RL_IN2, left);
+    
+    // Right side: FR + RR
+    write_motor(PIN_FR_PWM, PIN_FR_IN1, PIN_FR_IN2, right);
+    write_motor(PIN_RR_PWM, PIN_RR_IN1, PIN_RR_IN2, right);
 }
 
 void ChassisNode::setup_motor_pins() {
