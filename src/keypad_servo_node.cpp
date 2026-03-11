@@ -54,15 +54,15 @@ private:
         RCLCPP_INFO(this->get_logger(),"Executing keypad command: %s",command.c_str());
 
         for(char digit : command)
-        {
+{
 
-            if(!isdigit(digit))
-                continue;
+    if(!isdigit(digit) && digit != '#')
+        continue;
 
-            servo_.press_digit(digit);
+    servo_.press_digit(digit);
 
-            rclcpp::sleep_for(std::chrono::milliseconds(250));
-        }
+    rclcpp::sleep_for(std::chrono::milliseconds(250));
+}
 
         servo_.home();
     }
