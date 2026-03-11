@@ -14,11 +14,12 @@ find_package(nav_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 find_library(PIGPIO_LIB pigpio REQUIRED)
+find_library(I2C_LIB i2c REQUIRED)
 
 
 # Create library for sensors
 add_library(sensor_lib SHARED 
-    # src/sensors/GY31.cpp #NEEDS TO BE FIXED
+    src/sensors/VEML7700.cpp 
     src/sensors/MPU6050.cpp
     src/odometry.cpp
     src/navigation_controller.cpp
@@ -31,6 +32,8 @@ target_include_directories(sensor_lib PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(sensor_lib rclcpp std_msgs sensor_msgs nav_msgs)
+
+target_link_libraries(sensor_lib ${I2C_LIB})
 
 
 # define Drive action

@@ -74,6 +74,27 @@ void ChassisNode::odometry_update_loop() {
             // Update odometry with encoder data and IMU heading
             odometry_->update(fl, fr, rl, rr, heading_rad);
 
+            // --- START LIGHT DETECTION  ---
+            // Check for competition start light (ONE-TIME detection)
+            // Runs at 100 Hz until detected, then stops checking
+            if (start_light_sensor_ && !start_light_detected_ && !start_light_disabled_) {
+                uint16_t white = 0;
+                
+                if (start_light_sensor_->readWhite(white)) { // Use new bool return API
+                    // Use floating-point ratio to avoid overflow when baseline_white_ >= 32768
+                    if (baseline_white_ > 0 && (static_cast<double>(white) / static_cast<double>(baseline_white_)) > 2.0) {
+                        start_light_detected_ = true;
+                        RCLCPP_INFO(this->get_logger(), "🚦 START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
+                                    white, baseline_white_);
+                        
+                        auto msg = std_msgs::msg::Bool();
+                        msg.data = true;
+                        start_light_pub_->publish(msg);
+                    }
+                }
+            }
+
+
             // --- Ultrasonic Correction Block (Runs at 10Hz) ---
             ultrasonic_counter++;
             if (ultrasonic_counter >= 10 && ultrasonic_driver_) { 
@@ -149,11 +170,47 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     odometry_ = std::make_shared<Hardware::MecanumOdometry>(177.8f, 237.5f, 60.0f);
     encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
     encoder_driver_->initialize();
-
+    //Init IMU
     if (imu_.initialize() == 0) {
         RCLCPP_INFO(this->get_logger(), "IMU Calibrating...");
         imu_.calibrate(500); 
     }
+
+    // Initialize VEML7700 Start Light Sensor
+    start_light_sensor_ = std::make_shared<VEML7700>(1, 0x10);
+    if (start_light_sensor_->begin(VEML7700_ALS_GAIN_1_8, VEML7700_ALS_IT_25MS)) {
+        const int num_samples = 5;
+        uint32_t sum = 0;
+        int valid_samples = 0;
+        
+        for (int i = 0; i < num_samples; i++) {
+            usleep(30000);
+            uint16_t sample = 0;
+            
+            // FIXED: Use new bool return API
+            if (start_light_sensor_->readWhite(sample) && sample > 0) {
+                sum += sample;
+                valid_samples++;
+            }
+        }
+        
+        if (valid_samples > 0) {
+            baseline_white_ = sum / valid_samples;
+            RCLCPP_INFO(this->get_logger(), "✅ Start Light Sensor Ready. Baseline WHITE: %d counts (%d/%d samples)", 
+                        baseline_white_, valid_samples, num_samples);
+        } else {
+            start_light_disabled_ = true;
+            RCLCPP_WARN(this->get_logger(), "⚠️  Start Light Sensor baseline failed - detection DISABLED");
+        }
+    } else {
+        start_light_disabled_ = true;
+        RCLCPP_ERROR(this->get_logger(), "❌ Start Light Sensor Init Failed! %s", 
+                     start_light_sensor_->getLastError().c_str());
+    }
+    
+    //Initialize publisher BEFORE starting odometry thread
+    start_light_pub_ = this->create_publisher<std_msgs::msg::Bool>("/start_light_detected", 10);
+
 
     // Launch odometry update loop in a background thread
     odometry_thread_ = std::thread(&ChassisNode::odometry_update_loop, this);
@@ -328,7 +385,16 @@ void ChassisNode::stop_motors() {
 }
 
 // Action callbacks
-rclcpp_action::GoalResponse ChassisNode::handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal) {
+rclcpp_action::GoalResponse ChassisNode::handle_goal(
+    const rclcpp_action::GoalUUID & uuid, 
+    std::shared_ptr<const Drive::Goal> goal) {
+    
+    //Reject if previous execution still running
+    if (execute_thread_.joinable()) {
+        RCLCPP_WARN(this->get_logger(), "Goal rejected - previous action still executing");
+        return rclcpp_action::GoalResponse::REJECT;
+    }
+    
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
@@ -337,7 +403,10 @@ rclcpp_action::CancelResponse ChassisNode::handle_cancel(const std::shared_ptr<G
 }
 
 void ChassisNode::handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle) {
-    std::thread{std::bind(&ChassisNode::execute, this, goal_handle)}.detach();
+    if (execute_thread_.joinable()) {
+        execute_thread_.join();
+    }
+    execute_thread_ = std::thread(std::bind(&ChassisNode::execute, this, goal_handle));
 }
 
 int main(int argc, char * argv[]) {
