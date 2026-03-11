@@ -1,6 +1,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
-#include "hardware_team_robot/keypad_servo.hpp"
+#include "hardware_team_robot/keypad_servo.h"
 #include <pigpio.h>
 using std::placeholders::_1;
 
