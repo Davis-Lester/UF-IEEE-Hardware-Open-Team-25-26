@@ -71,6 +71,12 @@ target_link_libraries(camera_node sensor_lib ${PIGPIO_LIB} ${OpenCV_LIBRARIES} "
 add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
 
+# Keypad Servo node
+add_executable(keypad_servo_node src/keypad_servo_node.cpp)
+ament_target_dependencies(keypad_servo_node rclcpp std_msgs)
+target_link_libraries(keypad_servo_node ${PIGPIO_LIB})
+
+
 # Odometry test node
 add_executable(odom_test_node src/odometry_test.cpp)
 target_link_libraries(odom_test_node sensor_lib ${PIGPIO_LIB})
@@ -83,6 +89,7 @@ install(TARGETS
   odom_test_node
   camera_node
   ir_node
+  keypad_servo_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
