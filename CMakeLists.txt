@@ -23,6 +23,7 @@ find_library(I2C_LIB i2c REQUIRED)
 # Create library for sensors
 add_library(sensor_lib SHARED 
     src/sensors/VEML7700.cpp 
+    src/sensors/UltrasonicDistance.cpp
     src/sensors/MPU6050.cpp
     src/odometry.cpp
     src/navigation_controller.cpp

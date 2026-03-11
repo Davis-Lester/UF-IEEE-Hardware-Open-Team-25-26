@@ -36,11 +36,10 @@ private:
 
     // Start Light Detection Subscriber
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
-    bool start_light_detected_{false};
+    bool start_detected_{false};
     
     
     // Callbacks
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
     void check_start_condition();
     
     // Routine Logic
