@@ -14,11 +14,18 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>std_msgs</depend>
-
+  <depend>action_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>nav_msgs</depend>
+
   <depend>pigpio</depend>
 
+  <depend>cv_bridge</depend>
+  <depend>libopencv-dev</depend>
+  <depend>image_transport</depend>
+  <exec_depend>v4l2_camera</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
   

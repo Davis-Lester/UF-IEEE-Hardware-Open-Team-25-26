@@ -10,7 +10,10 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(OpenCV REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 find_library(PIGPIO_LIB pigpio REQUIRED)
@@ -39,6 +42,8 @@ target_link_libraries(sensor_lib ${I2C_LIB})
 # define Drive action
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Drive.action"
+  "action/FindColor.action"
+  DEPENDENCIES action_msgs
 )
 
 rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
@@ -60,6 +65,12 @@ add_executable(ir_node src/ir_node.cpp) # IR node likely doesn't need odometry/I
 target_link_libraries(ir_node ${PIGPIO_LIB})
 ament_target_dependencies(ir_node rclcpp std_msgs)
 
+#Camera Node
+add_executable(camera_node src/camera_node.cpp)
+target_link_libraries(camera_node sensor_lib ${PIGPIO_LIB} ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
+add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
+ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
+
 # Odometry test node
 add_executable(odom_test_node src/odometry_test.cpp)
 target_link_libraries(odom_test_node sensor_lib ${PIGPIO_LIB})
@@ -70,6 +81,7 @@ install(TARGETS
   auton_node
   #chassis_node
   odom_test_node
+  camera_node
   ir_node
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -79,4 +91,7 @@ install(DIRECTORY include/
   DESTINATION include/
 )
 
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 ament_package()
