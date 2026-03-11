@@ -10,6 +10,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
@@ -39,6 +40,7 @@ ament_target_dependencies(sensor_lib rclcpp std_msgs sensor_msgs nav_msgs)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Drive.action"
   "action/FindColor.action"
+  DEPENDENCIES action_msgs
 )
 
 rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
@@ -57,7 +59,7 @@ ament_target_dependencies(auton_node rclcpp rclcpp_action std_msgs)
 
 # IR Node
 add_executable(ir_node src/ir_node.cpp) # IR node likely doesn't need odometry/IMU
-target_link_libraries(ir_node ${PIGPIO_LIB} "${cpp_typesupport_target}")
+target_link_libraries(ir_node ${PIGPIO_LIB})
 ament_target_dependencies(ir_node rclcpp std_msgs)
 
 #Camera Node
