@@ -19,8 +19,12 @@ public:
         return;             
     }
 
-    servo_.initialize();    
-    initialized_ = true;     
+     if (!servo_.initialize()) {
++        RCLCPP_FATAL(this->get_logger(), "keypad servo initialization failed");
++        rclcpp::shutdown();
++        return;
++    }
++    initialized_ = true;
 
     subscription_ = this->create_subscription<std_msgs::msg::String>(
         "/keypad_command",
