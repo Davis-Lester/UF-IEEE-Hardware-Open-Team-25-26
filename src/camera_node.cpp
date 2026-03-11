@@ -119,8 +119,6 @@ rclcpp_action::GoalResponse CameraProcessor::handle_goal(const rclcpp_action::Go
 }
 
 void CameraProcessor::handle_accepted(const std::shared_ptr<GoalHandleFindColor> goal_handle) {
-    goal_handle->execute();
-
     active_goal_handle_ = goal_handle;
     goal_active_ = true;
     start_time_ = this->now(); // Mark the start time
