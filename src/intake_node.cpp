@@ -17,8 +17,12 @@ IntakeNode::IntakeNode() : Node("intake_node") {
     // Safety: Ensure the motor is strictly off at startup
     stop_intake();
 
+    rclcpp::QoS intake_qos(10);
+    intake_qos.transient_local();
+    intake_qos.reliable();
+
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
-        "/intake_cmd", 10,
+        "/intake_cmd", intake_qos,
         std::bind(&IntakeNode::intake_callback, this, std::placeholders::_1)
     );
 
@@ -41,17 +45,37 @@ void IntakeNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
 }
 
 void IntakeNode::set_intake_hardware(int state) {
+    // Track the current state to detect hard reversals
+    static int current_state = 0;
+
+    // Ignore redundant commands to prevent unnecessary hardware writes
+    if (state == current_state) {
+        return;
+    }
+
     switch (state) {
         case 1:  // Forward / Intake On
             RCLCPP_INFO(this->get_logger(), "Intake: FORWARD");
+            
+            // Safety: Cut power first if transitioning directly from reverse
+            if (current_state == -1) {
+                gpioPWM(INTAKE_PWM_PIN, 0); 
+            }
+            
             gpioWrite(INTAKE_DIR_PIN, 1);
-            gpioPWM(INTAKE_PWM_PIN, 255); // 100% duty cycle (0-255 range)
+            gpioPWM(INTAKE_PWM_PIN, 255); // 100% duty cycle
             break;
             
         case -1: // Reverse / Outtake
             RCLCPP_INFO(this->get_logger(), "Intake: REVERSE");
+            
+            // Safety: Cut power first if transitioning directly from forward
+            if (current_state == 1) {
+                gpioPWM(INTAKE_PWM_PIN, 0); 
+            }
+            
             gpioWrite(INTAKE_DIR_PIN, 0);
-            gpioPWM(INTAKE_PWM_PIN, 255); // 100% duty cycle (0-255 range)
+            gpioPWM(INTAKE_PWM_PIN, 255); // 100% duty cycle
             break;
             
         case 0:  // Explicit Off command
@@ -59,6 +83,9 @@ void IntakeNode::set_intake_hardware(int state) {
             stop_intake();
             break;
     }
+    
+    // Update the tracker
+    current_state = state;
 }
 
 void IntakeNode::stop_intake() {
