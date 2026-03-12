@@ -29,7 +29,10 @@ public:
 
     // Start Light Detection Interface
     bool isStartLightDetected() const { return start_light_detected_; }
-
+    // Motor Control Interface for NavigationController
+    void setTankSpeeds(float left_speed, float right_speed) {
+        set_tank_power(static_cast<double>(left_speed), static_cast<double>(right_speed));
+    }
 
     ChassisNode();
     ~ChassisNode();

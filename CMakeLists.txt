@@ -19,6 +19,12 @@ find_package(rosidl_default_generators REQUIRED)
 find_library(PIGPIO_LIB pigpio REQUIRED)
 find_library(I2C_LIB i2c REQUIRED)
 
+# define Drive action
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/Drive.action"
+  "action/FindColor.action"
+  DEPENDENCIES action_msgs
+)
 
 # Create library for sensors
 add_library(sensor_lib SHARED 
@@ -30,24 +36,17 @@ add_library(sensor_lib SHARED
     src/tank_odometry.cpp
     src/encoder_driver.cpp
 )
-
 target_include_directories(sensor_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp>
   $<INSTALL_INTERFACE:include>
 )
-ament_target_dependencies(sensor_lib rclcpp std_msgs sensor_msgs nav_msgs)
-
+ament_target_dependencies(sensor_lib rclcpp rclcpp_action std_msgs sensor_msgs nav_msgs)
+add_dependencies(sensor_lib ${PROJECT_NAME}__rosidl_generator_cpp)
 target_link_libraries(sensor_lib ${I2C_LIB} ${PIGPIO_LIB})
 
-
-# define Drive action
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "action/Drive.action"
-  "action/FindColor.action"
-  DEPENDENCIES action_msgs
-)
-
 rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
+add_dependencies(sensor_lib ${cpp_typesupport_target})
 
 add_executable(auton_node src/auton_routine.cpp)
 target_link_libraries(auton_node sensor_lib "${cpp_typesupport_target}")
@@ -73,25 +72,17 @@ add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
 
 # Keypad Servo node
-add_executable(keypad_servo_node src/keypad_servo_node.cpp)
-ament_target_dependencies(keypad_servo_node rclcpp std_msgs)
-target_link_libraries(keypad_servo_node sensor_lib ${PIGPIO_LIB})
-
-
-
-# Odometry test node
-add_executable(odom_test_node src/odometry_test.cpp)
-target_link_libraries(odom_test_node sensor_lib)
-ament_target_dependencies(odom_test_node rclcpp std_msgs)
+# add_executable(keypad_servo_node src/keypad_servo_node.cpp)
+# ament_target_dependencies(keypad_servo_node rclcpp std_msgs)
+# target_link_libraries(keypad_servo_node sensor_lib ${PIGPIO_LIB})
 
 install(TARGETS
   sensor_lib
   auton_node
   chassis_node
-  odom_test_node
   camera_node
   ir_node
-  keypad_servo_node
+  # keypad_servo_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
