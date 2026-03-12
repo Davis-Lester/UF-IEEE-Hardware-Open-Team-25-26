@@ -1,7 +1,7 @@
 #ifndef NAVIGATION_CONTROLLER_H
 #define NAVIGATION_CONTROLLER_H
 
-#include "hardware_team_robot/mecanum_odometry.h"
+#include "hardware_team_robot/tank_odometry.h"
 #include "rclcpp/rclcpp.hpp"
 #include <memory>
 #include <cmath>
@@ -14,9 +14,10 @@ class MPU6050;
 namespace Hardware {
 
 /*
- * NavigationController
+ * NavigationController (Tank Drive)
  *
  * High-level motion controller for autonomous robot movement.
+ * Adapted for differential/tank drive kinematics.
  *
  * Provides simple movement primitives built on top of odometry feedback
  * and heading measurements:
@@ -27,29 +28,24 @@ namespace Hardware {
  * Motion is regulated using PID controllers for:
  *
  *   • Heading correction (rotation)
- *   • Linear distance control (forward)
- *   • Lateral distance control (strafe)
+ *   • Linear distance control (forward/backward)
+ *
+ * Tank drive limitations:
+ *   • Cannot strafe (no lateral movement)
+ *   • Movement requires point-turn-drive sequences
  *
  * Designed to integrate with:
  *
- *   • MecanumOdometry for position feedback
+ *   • TankOdometry for position feedback
  *   • IMU for absolute heading
  *   • Chassis controller for wheel commands
- *
- * Concurrency Model:
- *
- *   Odometry and sensor reads are thread-safe. Controller execution is
- *   intended for a single control loop thread to maintain deterministic
- *   behavior.
  */
-
 class NavigationController {
 public:
-
     // Requires access to odometry and ROS node utilities
-    NavigationController(std::shared_ptr<MecanumOdometry> odom,
+    NavigationController(std::shared_ptr<TankOdometry> odom,
                          std::shared_ptr<rclcpp::Node> rclcpp_node);
-
+    
     ~NavigationController();
 
     // Drives to a target position and final orientation
@@ -67,7 +63,7 @@ public:
                      float tolerance_inches = 1.0f);
 
     // Returns latest pose estimate from odometry
-    MecanumOdometry::Pose getCurrentPose() const;
+    TankOdometry::Pose getCurrentPose() const;
 
     // Resets odometry state
     void resetOdometry();
@@ -87,9 +83,8 @@ public:
     void setDebugLogging(bool enable);
 
 private:
-
     // Shared subsystem interfaces
-    std::shared_ptr<MecanumOdometry> odometry_;
+    std::shared_ptr<TankOdometry> odometry_;
     std::shared_ptr<rclcpp::Node> node_;
 
     // Debug control
@@ -106,22 +101,20 @@ private:
         float kp{1.0f};
         float ki{0.0f};
         float kd{0.1f};
-
         float integral{0.0f};
         float last_error{0.0f};
         float output{0.0f};
 
         // Computes controller output from error and timestep
         float calculate(float error, float dt);
-
+        
         // Clears accumulated state
         void reset();
     };
 
-    // Controllers for each motion component
-    PIDController heading_pid_;
-    PIDController distance_pid_;
-    PIDController strafe_pid_;
+    // Controllers for tank drive motion components
+    PIDController heading_pid_;     // Rotation control
+    PIDController distance_pid_;    // Forward/backward control
 
     // Maximum duration allowed for a single movement command
     static constexpr float MOVEMENT_TIMEOUT_SEC = 10.0f;
@@ -129,19 +122,17 @@ private:
     // Basic geometric helpers
     float calculateDistance(float x1, float y1,
                             float x2, float y2) const;
-
     float calculateHeading(float dx, float dy) const;
-
     float normalizeAngle(float angle_rad) const;
 
-    // Internal motion primitives
+    // Internal motion primitives for tank drive
     bool turnToHeading(float target_heading_rad,
                        float tolerance_rad = 0.035f);
-
+    
     bool driveDistance(float target_distance_inches,
                        float desired_heading_rad,
                        float tolerance_inches = 1.0f);
-
+    
     bool driveToPoint(float target_x_inches,
                       float target_y_inches,
                       float tolerance_inches = 1.0f);

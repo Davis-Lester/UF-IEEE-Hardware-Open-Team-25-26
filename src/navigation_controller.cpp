@@ -1,4 +1,3 @@
-
 #include "hardware_team_robot/navigation_controller.h"
 #include <cstdio>
 #include <thread>
@@ -13,7 +12,7 @@ float NavigationController::PIDController::calculate(float error, float dt) {
     // Proportional term
     float p_term = kp * error;
     
-    // Integral term (with anti-windup - don't accumulate if output is saturated)
+    // Integral term (with anti-windup)
     integral += error * dt;
     // Clamp integral to reasonable bounds
     if (integral > 10.0f) integral = 10.0f;
@@ -43,11 +42,11 @@ void NavigationController::PIDController::reset() {
     output = 0.0f;
 }
 
-NavigationController::NavigationController(std::shared_ptr<MecanumOdometry> odom,
+NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
                                          std::shared_ptr<rclcpp::Node> rclcpp_node)
     : odometry_(odom), node_(rclcpp_node) {
     
-    // Initialize PID controllers with reasonable defaults
+    // Initialize PID controllers with reasonable defaults for tank drive
     // These may need tuning based on actual robot performance
     distance_pid_.kp = 0.5f;
     distance_pid_.ki = 0.05f;
@@ -57,11 +56,7 @@ NavigationController::NavigationController(std::shared_ptr<MecanumOdometry> odom
     heading_pid_.ki = 0.1f;
     heading_pid_.kd = 0.3f;
     
-    strafe_pid_.kp = 0.5f;
-    strafe_pid_.ki = 0.05f;
-    strafe_pid_.kd = 0.2f;
-    
-    RCLCPP_INFO(node_->get_logger(), "[NavigationController] Initialized");
+    RCLCPP_INFO(node_->get_logger(), "[NavigationController] Initialized for Tank Drive");
 }
 
 NavigationController::~NavigationController() {
@@ -81,22 +76,23 @@ bool NavigationController::moveToPose(float target_x_inches, float target_y_inch
         "[NavigationController] moveToPose: (%.1f, %.1f) θ=%.3f rad",
         target_x_inches, target_y_inches, target_theta_rad);
     
-    // Step 1: Turn to face target
-    MecanumOdometry::Pose current = odometry_->getCurrentPose();
+    // Step 1: Turn to face target point
+    TankOdometry::Pose current = odometry_->getCurrentPose();
     float dx = target_x_inches - current.x_inches;
     float dy = target_y_inches - current.y_inches;
-    float target_heading = calculateHeading(dx, dy);
-    
-    if (!turnToHeading(target_heading, angle_tolerance_rad)) {
-        RCLCPP_WARN(node_->get_logger(), "Turn to heading timed out");
-        return false;
-    }
-    
-    // Step 2: Drive to target position
     float distance = calculateDistance(current.x_inches, current.y_inches,
                                       target_x_inches, target_y_inches);
     
+    // Only turn and drive if we're not already at the target
     if (distance > tolerance_inches) {
+        float target_heading = calculateHeading(dx, dy);
+        
+        if (!turnToHeading(target_heading, angle_tolerance_rad)) {
+            RCLCPP_WARN(node_->get_logger(), "Turn to heading timed out");
+            return false;
+        }
+        
+        // Step 2: Drive to target position
         if (!driveDistance(distance, target_heading, tolerance_inches)) {
             RCLCPP_WARN(node_->get_logger(), "Drive distance timed out");
             return false;
@@ -133,7 +129,7 @@ bool NavigationController::moveToPoint(float target_x_inches, float target_y_inc
     }
 }
 
-MecanumOdometry::Pose NavigationController::getCurrentPose() const {
+TankOdometry::Pose NavigationController::getCurrentPose() const {
     if (odometry_) {
         return odometry_->getCurrentPose();
     }
@@ -191,11 +187,11 @@ float NavigationController::normalizeAngle(float angle_rad) const {
 
 bool NavigationController::turnToHeading(float target_heading_rad, float tolerance_rad) {
     // IMPORTANT: This is a BLOCKING call. In a real ROS 2 system, this should be refactored
-    // to use an action server or timer-based approach. For now, this works for autonomous
-    // routines that are OK with blocking movement commands.
+    // to use an action server or timer-based approach.
     
     auto start_time = std::chrono::high_resolution_clock::now();
     PIDController pid = heading_pid_;  // Local copy for this movement
+    pid.reset();  // Clear any previous state
     
     while (true) {
         // Check timeout
@@ -203,6 +199,7 @@ bool NavigationController::turnToHeading(float target_heading_rad, float toleran
         float elapsed_sec = std::chrono::duration<float>(elapsed).count();
         if (elapsed_sec > MOVEMENT_TIMEOUT_SEC) {
             RCLCPP_WARN(node_->get_logger(), "turnToHeading: TIMEOUT after %.1f sec", elapsed_sec);
+            stop();
             return false;
         }
         
@@ -215,6 +212,7 @@ bool NavigationController::turnToHeading(float target_heading_rad, float toleran
         
         // Check if at target
         if (std::abs(error) < tolerance_rad) {
+            stop();
             RCLCPP_INFO(node_->get_logger(), "turnToHeading: Reached target heading");
             return true;
         }
@@ -222,20 +220,20 @@ bool NavigationController::turnToHeading(float target_heading_rad, float toleran
         // Calculate dt for PID
         float dt = 0.01f;  // 10ms
         
-        // PID control
-        float control_output = pid.calculate(error, dt);
+        // PID control for rotation
+        float rotation_speed = pid.calculate(error, dt);
         
         if (debug_logging_) {
             RCLCPP_INFO(node_->get_logger(),
-                "turnToHeading: error=%.3f rad, output=%.1f", error, control_output);
+                "turnToHeading: current=%.3f, target=%.3f, error=%.3f rad, output=%.1f",
+                current_heading, target_heading_rad, error, rotation_speed);
         }
         
-        // TODO: Send rotation command to chassis
-        // NOTE: This would call a method on ChassisNode or similar to actually control motors
-        // For now, this is a framework/planning method
-        // chassis_->sendWheelVelocities(fl_speed, fr_speed, rl_speed, rr_speed);
+        // TODO: Send differential rotation command to chassis
+        // For tank drive: left_speed = -rotation_speed, right_speed = +rotation_speed
+        // chassis_->setTankSpeeds(-rotation_speed, rotation_speed);
         
-        // Sleep briefly to cool CPU
+        // Sleep briefly
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
@@ -246,6 +244,10 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
     auto start_time = std::chrono::high_resolution_clock::now();
     
     auto start_pose = odometry_->getCurrentPose();
+    PIDController dist_pid = distance_pid_;
+    PIDController head_pid = heading_pid_;
+    dist_pid.reset();
+    head_pid.reset();
     
     while (true) {
         // Check timeout
@@ -253,6 +255,7 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
         float elapsed_sec = std::chrono::duration<float>(elapsed).count();
         if (elapsed_sec > MOVEMENT_TIMEOUT_SEC) {
             RCLCPP_WARN(node_->get_logger(), "driveDistance: TIMEOUT after %.1f sec", elapsed_sec);
+            stop();
             return false;
         }
         
@@ -261,10 +264,11 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
         float distance_traveled = calculateDistance(start_pose.x_inches, start_pose.y_inches,
                                                    current.x_inches, current.y_inches);
         
-        float error = target_distance_inches - distance_traveled;
+        float distance_error = target_distance_inches - distance_traveled;
         
         // Check if at target
-        if (std::abs(error) < tolerance_inches) {
+        if (std::abs(distance_error) < tolerance_inches) {
+            stop();
             RCLCPP_INFO(node_->get_logger(), "driveDistance: Reached target");
             return true;
         }
@@ -273,20 +277,22 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
         float dt = 0.01f;
         
         // PID for forward motion
-        float forward_output = distance_pid_.calculate(error, dt);
+        float forward_speed = dist_pid.calculate(distance_error, dt);
         
-        // Minor heading correction if needed
+        // Minor heading correction
         float heading_error = normalizeAngle(desired_heading_rad - current.theta_rad);
-        float heading_correction = heading_pid_.calculate(heading_error, dt);
+        float heading_correction = head_pid.calculate(heading_error, dt) * 0.3f;  // Scale down correction
         
         if (debug_logging_) {
             RCLCPP_INFO(node_->get_logger(),
-                "driveDistance: traveled=%.1f/%.1f inches, forward_out=%.1f, heading_corr=%.1f",
-                distance_traveled, target_distance_inches, forward_output, heading_correction);
+                "driveDistance: traveled=%.1f/%.1f inches, forward=%.1f, heading_corr=%.1f",
+                distance_traveled, target_distance_inches, forward_speed, heading_correction);
         }
         
-        // TODO: Send forward and rotation commands to chassis
-        // NOTE: Need to actually call motor control methods here
+        // TODO: Send tank drive commands with heading correction
+        // left_speed = forward_speed - heading_correction
+        // right_speed = forward_speed + heading_correction
+        // chassis_->setTankSpeeds(forward_speed - heading_correction, forward_speed + heading_correction);
         
         // Sleep briefly
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -295,7 +301,9 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
 
 bool NavigationController::driveToPoint(float target_x_inches, float target_y_inches,
                                        float tolerance_inches) {
+    // For tank drive, this uses a turn-drive-turn approach
     // IMPORTANT: This is a BLOCKING call. See note in turnToHeading().
+    
     auto start_time = std::chrono::high_resolution_clock::now();
     
     while (true) {
@@ -304,6 +312,7 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
         float elapsed_sec = std::chrono::duration<float>(elapsed).count();
         if (elapsed_sec > MOVEMENT_TIMEOUT_SEC) {
             RCLCPP_WARN(node_->get_logger(), "driveToPoint: TIMEOUT after %.1f sec", elapsed_sec);
+            stop();
             return false;
         }
         
@@ -317,20 +326,27 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
         
         // Check if at target
         if (distance < tolerance_inches) {
+            stop();
             RCLCPP_INFO(node_->get_logger(), "driveToPoint: Reached target");
             return true;
         }
         
-        // Calculate required heading and strafe/forward decomposition
+        // Calculate required heading
         float target_heading = calculateHeading(dx, dy);
         float heading_error = normalizeAngle(target_heading - current.theta_rad);
         
-        // Calculate dt for PID
-        float dt = 0.01f;
+        // If heading error is large, turn first
+        if (std::abs(heading_error) > 0.15f) {  // ~8.6 degrees
+            if (!turnToHeading(target_heading, 0.05f)) {
+                return false;
+            }
+            continue;  // Re-evaluate after turn
+        }
         
-        // PID control for distance and heading
-        float distance_output = distance_pid_.calculate(distance, dt) * 0.5f;  // Scale down
-        float heading_output = heading_pid_.calculate(heading_error, dt);
+        // Drive forward with minor heading correction
+        float dt = 0.01f;
+        float forward_speed = distance_pid_.calculate(distance, dt) * 0.6f;  // Scale for smooth approach
+        float heading_correction = heading_pid_.calculate(heading_error, dt) * 0.2f;
         
         if (debug_logging_) {
             RCLCPP_INFO(node_->get_logger(),
@@ -339,7 +355,7 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
         }
         
         // TODO: Send velocity commands
-        // NOTE: Need to actually call motor control methods here
+        // chassis_->setTankSpeeds(forward_speed - heading_correction, forward_speed + heading_correction);
         
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
