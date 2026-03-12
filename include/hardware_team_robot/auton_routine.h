@@ -20,6 +20,7 @@
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 #include <string>
+#include <atomic>
 
 class AutonRoutine : public rclcpp::Node {
 public:
@@ -34,10 +35,9 @@ private:
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
 
-    void check_start_condition();
     // Start Light Detection Subscriber
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
-    bool start_detected_{false};
+    std::atomic<bool> start_detected_{false};
     
     // Routine Logic
     void run_routine();

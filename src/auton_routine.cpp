@@ -12,7 +12,7 @@
 //╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╰━━╯
 
 #include "hardware_team_robot/auton_routine.h"
-
+#include <thread> // Added for threading
 
 AutonRoutine::AutonRoutine() : Node("auton_routine") {
     this->client_ptr_ = rclcpp_action::create_client<Drive>(this, "drive_command");
@@ -40,10 +40,11 @@ void AutonRoutine::start_light_callback(const std_msgs::msg::Bool::SharedPtr msg
 void AutonRoutine::check_and_run() {
     if (start_detected_) {
         timer_->cancel();  // Stop checking
-        run_routine();     // Start autonomous
+        
+        // Spawn a new thread to run the blocking sequence off the main executor
+        std::thread(&AutonRoutine::run_routine, this).detach();
     }
 }
-
 
 // Updated to use the standardized 'target_value'
 void AutonRoutine::wait_for_drive(std::string mode, double target_value, double max_speed) {
@@ -60,11 +61,8 @@ void AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
         auto send_goal_options = rclcpp_action::Client<Drive>::SendGoalOptions();
         auto goal_handle_future = this->client_ptr_->async_send_goal(goal_msg, send_goal_options);
         
-        if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), goal_handle_future) !=
-            rclcpp::FutureReturnCode::SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Send goal failed");
-            return;
-        }
+        // Block the worker thread until the main thread resolves the goal handle
+        goal_handle_future.wait(); 
 
         auto goal_handle = goal_handle_future.get();
         if (!goal_handle) {
@@ -74,13 +72,15 @@ void AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
         auto result_future = this->client_ptr_->async_get_result(goal_handle);
 
         RCLCPP_INFO(this->get_logger(), "Executing %s...", mode.c_str());
-        rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future);
+        
+        // Block the worker thread until the main thread resolves the action result
+        result_future.wait(); 
+        
         RCLCPP_INFO(this->get_logger(), "Action Complete.");
 }
 
 void AutonRoutine::run_routine() {
-    timer_->cancel(); // Only run once
-
+    // Note: timer is already canceled in check_and_run
     RCLCPP_INFO(this->get_logger(), "--- STARTING AUTONOMOUS ---");
 
     // 1. Drive Forward
@@ -104,7 +104,10 @@ void AutonRoutine::run_routine() {
 int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<AutonRoutine>();
-    rclcpp::spin(node); // This spin handles the "wait_for_drive" inner spins
+    
+    // Main executor spins here, processing callbacks and action server responses
+    rclcpp::spin(node); 
+    
     rclcpp::shutdown();
     return 0;
 }
