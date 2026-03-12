@@ -12,7 +12,6 @@
 //╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╰━━╯
 
 #include "hardware_team_robot/auton_routine.h"
-#include <thread> // Added for threading
 
 AutonRoutine::AutonRoutine() : Node("auton_routine") {
     this->client_ptr_ = rclcpp_action::create_client<Drive>(this, "drive_command");
@@ -53,7 +52,7 @@ void AutonRoutine::check_and_run() {
 }
 
 // Updated to use the standardized 'target_value'
-void AutonRoutine::wait_for_drive(std::string mode, double target_value, double max_speed) {
+bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double max_speed) {
         auto goal_msg = Drive::Goal();
         goal_msg.mode = mode;
         goal_msg.target_value = target_value; 
@@ -70,7 +69,7 @@ void AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
         // Block the worker thread until the main thread resolves the goal handle
         if (goal_handle_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
             RCLCPP_ERROR(this->get_logger(), "Timeout waiting for goal handle");
-            return;goal_handle_future.wait(); 
+            return;
         }
 
         auto goal_handle = goal_handle_future.get();
@@ -87,7 +86,15 @@ void AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
             RCLCPP_ERROR(this->get_logger(), "Timeout waiting for goal handle");
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "Action Complete.");
+        // Inspect the actual result code to ensure the action didn't abort/cancel
+        auto result = result_future.get();
+        if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+            RCLCPP_INFO(this->get_logger(), "Action Complete.");
+            return true;
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Action failed with result code: %d", static_cast<int>(result.code));
+            return false;
+        }
 }
 
 void AutonRoutine::run_routine() {

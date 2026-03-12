@@ -21,6 +21,7 @@
 #include "std_msgs/msg/u_int8.hpp"
 #include <string>
 #include <atomic>
+#include <thread>
 
 class AutonRoutine : public rclcpp::Node {
 public:
@@ -46,7 +47,7 @@ private:
     void run_routine();
     
     // Helper to mimic EZ-Template blocking calls
-    void wait_for_drive(std::string mode, double target_value, double max_speed = 100.0);
+    bool wait_for_drive(std::string mode, double target_value, double max_speed = 100.0);
     
     void start_light_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void check_and_run(); 
