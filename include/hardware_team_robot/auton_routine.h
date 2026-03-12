@@ -28,6 +28,7 @@ public:
     using GoalHandleDrive = rclcpp_action::ClientGoalHandle<Drive>;
 
     AutonRoutine();
+    ~AutonRoutine();
 
 private:
     // Clients & Publishers
@@ -38,6 +39,8 @@ private:
     // Start Light Detection Subscriber
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
     std::atomic<bool> start_detected_{false};
+
+    std::thread routine_thread_;
     
     // Routine Logic
     void run_routine();

@@ -37,12 +37,18 @@ void AutonRoutine::start_light_callback(const std_msgs::msg::Bool::SharedPtr msg
     }
 }
 
+AutonRoutine::~AutonRoutine() {
+    if (routine_thread_.joinable()) {
+        routine_thread_.join();
+    }
+}
+
 void AutonRoutine::check_and_run() {
     if (start_detected_) {
         timer_->cancel();  // Stop checking
         
-        // Spawn a new thread to run the blocking sequence off the main executor
-        std::thread(&AutonRoutine::run_routine, this).detach();
+    // Spawn a new thread to run the blocking sequence off the main executor
+    routine_thread_ = std::thread(&AutonRoutine::run_routine, this);
     }
 }
 
@@ -62,7 +68,10 @@ void AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
         auto goal_handle_future = this->client_ptr_->async_send_goal(goal_msg, send_goal_options);
         
         // Block the worker thread until the main thread resolves the goal handle
-        goal_handle_future.wait(); 
+        if (goal_handle_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
+            RCLCPP_ERROR(this->get_logger(), "Timeout waiting for goal handle");
+            return;goal_handle_future.wait(); 
+        }
 
         auto goal_handle = goal_handle_future.get();
         if (!goal_handle) {
@@ -73,9 +82,11 @@ void AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
 
         RCLCPP_INFO(this->get_logger(), "Executing %s...", mode.c_str());
         
-        // Block the worker thread until the main thread resolves the action result
-        result_future.wait(); 
-        
+        // Block the worker thread until the main thread resolves the goal handle
+        if (result_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
+            RCLCPP_ERROR(this->get_logger(), "Timeout waiting for goal handle");
+            return;
+        }
         RCLCPP_INFO(this->get_logger(), "Action Complete.");
 }
 
