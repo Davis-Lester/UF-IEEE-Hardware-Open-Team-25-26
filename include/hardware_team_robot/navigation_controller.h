@@ -1,7 +1,7 @@
 #ifndef NAVIGATION_CONTROLLER_H
 #define NAVIGATION_CONTROLLER_H
 
-#include "hardware_team_robot/mecanum_odometry.h"
+#include "hardware_team_robot/tank_odometry.h"
 #include "rclcpp/rclcpp.hpp"
 #include <memory>
 #include <cmath>
@@ -13,46 +13,19 @@ class MPU6050;
 
 namespace Hardware {
 
-/*
- * NavigationController
- *
- * High-level motion controller for autonomous robot movement.
- *
- * Provides simple movement primitives built on top of odometry feedback
- * and heading measurements:
- *
- *   • moveToPose(x, y, θ)   Drive to position with specified orientation
- *   • moveToPoint(x, y)     Drive to position without orientation constraint
- *
- * Motion is regulated using PID controllers for:
- *
- *   • Heading correction (rotation)
- *   • Linear distance control (forward)
- *   • Lateral distance control (strafe)
- *
- * Designed to integrate with:
- *
- *   • MecanumOdometry for position feedback
- *   • IMU for absolute heading
- *   • Chassis controller for wheel commands
- *
- * Concurrency Model:
- *
- *   Odometry and sensor reads are thread-safe. Controller execution is
- *   intended for a single control loop thread to maintain deterministic
- *   behavior.
- */
-
 class NavigationController {
 public:
-
-    // Requires access to odometry and ROS node utilities
-    NavigationController(std::shared_ptr<MecanumOdometry> odom,
-                         std::shared_ptr<rclcpp::Node> rclcpp_node);
-
+    // Constructor requires non-null odometry and ROS node
+    // chassis_interface is optional but motors won't move without it
+    NavigationController(std::shared_ptr<TankOdometry> odom,
+                         std::shared_ptr<rclcpp::Node> rclcpp_node,
+                         ChassisNode* chassis_interface = nullptr);
+    
     ~NavigationController();
 
-    // Drives to a target position and final orientation
+    // Returns true if controller is properly initialized
+    bool isValid() const { return is_valid_; }
+
     bool moveToPose(float target_x_inches,
                     float target_y_inches,
                     float target_theta_rad,
@@ -60,91 +33,85 @@ public:
                     float tolerance_inches = 1.0f,
                     float angle_tolerance_rad = 0.035f);
 
-    // Drives to a target position while ignoring final heading
     bool moveToPoint(float target_x_inches,
                      float target_y_inches,
                      float max_speed = 150.0f,
                      float tolerance_inches = 1.0f);
 
-    // Returns latest pose estimate from odometry
-    MecanumOdometry::Pose getCurrentPose() const;
-
-    // Resets odometry state
+    TankOdometry::Pose getCurrentPose() const;
     void resetOdometry();
-
-    // Immediately halts all commanded motion
     void stop();
-
-    // Updates controller gains for distance and heading loops
     void setPIDGains(float distance_kp,
                      float distance_ki,
                      float distance_kd,
                      float heading_kp,
                      float heading_ki,
                      float heading_kd);
-
-    // Enables or disables diagnostic logging
     void setDebugLogging(bool enable);
+    
+    /*
+     * setChassisInterface - Set or update the chassis interface
+     * 
+     * @param chassis_interface Pointer to ChassisNode or nullptr
+     * 
+     * Lifetime contract: The ChassisNode* is stored as a raw pointer in chassis_
+     * and is NOT owned by NavigationController. Callers MUST ensure the chassis
+     * instance outlives this NavigationController or explicitly set to nullptr
+     * before chassis destruction. Passing nullptr is safe and will cause motor
+     * commands to become no-ops (useful for testing without hardware).
+     */
+    void setChassisInterface(ChassisNode* chassis_interface);
 
 private:
-
-    // Shared subsystem interfaces
-    std::shared_ptr<MecanumOdometry> odometry_;
+    std::shared_ptr<TankOdometry> odometry_;
     std::shared_ptr<rclcpp::Node> node_;
-
-    // Debug control
+    ChassisNode* chassis_;  // Raw pointer - lifetime managed externally
+    bool is_valid_;         // True if node_ and odometry_ are non-null
     bool debug_logging_{false};
 
-    /*
-     * PIDController
-     *
-     * Minimal PID regulator used for motion control loops.
-     * Maintains internal state for integral accumulation and
-     * derivative estimation.
-     */
+    // Control scaling constants
+    static constexpr float HEADING_CORRECTION_SCALE = 0.3f;   // Scale for heading corrections during forward motion
+    static constexpr float APPROACH_SPEED_SCALE = 0.6f;       // Scale for speed when approaching target
+    static constexpr float APPROACH_HEADING_SCALE = 0.2f;     // Scale for heading correction during approach
+
     struct PIDController {
         float kp{1.0f};
         float ki{0.0f};
         float kd{0.1f};
-
         float integral{0.0f};
         float last_error{0.0f};
         float output{0.0f};
-
-        // Computes controller output from error and timestep
         float calculate(float error, float dt);
-
-        // Clears accumulated state
         void reset();
     };
 
-    // Controllers for each motion component
     PIDController heading_pid_;
     PIDController distance_pid_;
-    PIDController strafe_pid_;
 
-    // Maximum duration allowed for a single movement command
     static constexpr float MOVEMENT_TIMEOUT_SEC = 10.0f;
 
-    // Basic geometric helpers
     float calculateDistance(float x1, float y1,
                             float x2, float y2) const;
-
     float calculateHeading(float dx, float dy) const;
-
     float normalizeAngle(float angle_rad) const;
 
     // Internal motion primitives
     bool turnToHeading(float target_heading_rad,
-                       float tolerance_rad = 0.035f);
-
+                       float tolerance_rad = 0.035f,
+                       float max_speed = 150.0f);
+    
     bool driveDistance(float target_distance_inches,
                        float desired_heading_rad,
-                       float tolerance_inches = 1.0f);
-
+                       float tolerance_inches = 1.0f,
+                       float max_speed = 150.0f);
+    
     bool driveToPoint(float target_x_inches,
                       float target_y_inches,
-                      float tolerance_inches = 1.0f);
+                      float tolerance_inches = 1.0f,
+                      float max_speed = 150.0f);
+    
+    // Helper to send tank commands safely
+    void sendTankSpeeds(float left_speed, float right_speed);
 };
 
 } // namespace Hardware
