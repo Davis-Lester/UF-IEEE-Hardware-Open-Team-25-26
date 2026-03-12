@@ -27,7 +27,7 @@ add_library(sensor_lib SHARED
     src/sensors/MPU6050.cpp
     src/odometry.cpp
     src/navigation_controller.cpp
-    src/mecanum_odometry.cpp
+    src/tank_odometry.cpp
     src/encoder_driver.cpp
 )
 
