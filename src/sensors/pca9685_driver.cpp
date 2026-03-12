@@ -70,7 +70,13 @@ bool PCA9685Driver::initialize() {
     usleep(500);
 
     uint8_t mode1;
-    if (readRegister(REG_MODE1, mode1) && (mode1 & MODE1_RESTART)) {
+    if (!readRegister(REG_MODE1, mode1)) {
+        last_error_ = "Failed to read MODE1 register";
+        cleanupOnFailure();
+        return false;
+    }
+
+    if (mode1 & MODE1_RESTART) {
         if (!writeRegister(REG_MODE1, MODE1_AI | MODE1_RESTART)) {
             last_error_ = "Failed to clear restart";
             cleanupOnFailure();

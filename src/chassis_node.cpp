@@ -157,6 +157,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
             motor_driver_.reset();  // To prevent using failed driver
         } else {
             RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
+            motor_ready_ = true; 
         }
         
         // --- Setup Ultrasonic System ---
@@ -312,15 +313,14 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 
 // ========== Simplified tank drive control (4 wheels: 2 per side) ==========
 void ChassisNode::set_tank_power(double left, double right) {
-    if (!motor_driver_) return;
+    if (!motor_driver_ || !motor_ready_) return;  // <-- ADD motor_ready_ check
     
-    // Convert -255...255 to -100...100
-    int8_t left_pct = std::clamp(static_cast<int8_t>((left * 100.0) / 255.0), 
-                                 static_cast<int8_t>(-100), 
-                                 static_cast<int8_t>(100));
-    int8_t right_pct = std::clamp(static_cast<int8_t>((right * 100.0) / 255.0), 
-                                  static_cast<int8_t>(-100), 
-                                  static_cast<int8_t>(100));
+    // Convert -255...255 to -100...100 safely
+    double left_d = (left * 100.0) / 255.0;
+    double right_d = (right * 100.0) / 255.0;
+    
+    int8_t left_pct = static_cast<int8_t>(std::clamp(left_d, -100.0, 100.0));
+    int8_t right_pct = static_cast<int8_t>(std::clamp(right_d, -100.0, 100.0));
     
     // Left side: M1 (FL) + M3 (RL)
     motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_1, left_pct);
@@ -374,7 +374,11 @@ rclcpp_action::GoalResponse ChassisNode::handle_goal(
     const rclcpp_action::GoalUUID & uuid, 
     std::shared_ptr<const Drive::Goal> goal) {
     
-    //Reject if previous execution still running
+    if (!motor_ready_) {
+        RCLCPP_ERROR(this->get_logger(), "Motor driver not initialized - rejecting goal");
+        return rclcpp_action::GoalResponse::REJECT;
+    }
+    
     if (execute_thread_.joinable()) {
         RCLCPP_WARN(this->get_logger(), "Goal rejected - previous action still executing");
         return rclcpp_action::GoalResponse::REJECT;
