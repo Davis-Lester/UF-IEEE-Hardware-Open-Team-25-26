@@ -1,4 +1,4 @@
-#include "hardware_team_robot/pca9685_driver.h"
+#include "hardware_team_robot/sensors/pca9685_driver.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -96,7 +96,12 @@ void PCA9685Driver::getMotorChannels(Motor motor, uint8_t& fwd_ch, uint8_t& rev_
         case MOTOR_4: fwd_ch = 6;  rev_ch = 7;  break;
         case MOTOR_6: fwd_ch = 8;  rev_ch = 9;  break;
         case MOTOR_5: fwd_ch = 10; rev_ch = 11; break;
-        default: fwd_ch = 0; rev_ch = 0; break;
+        default: 
+            // Invalid motor ID - set to sentinel values
+            fwd_ch = 0xFF; 
+            rev_ch = 0xFF;
+            last_error_ = "Invalid motor ID in getMotorChannels";
+            break;
     }
 }
 
