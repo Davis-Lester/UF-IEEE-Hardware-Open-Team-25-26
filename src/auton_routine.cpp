@@ -60,7 +60,7 @@ bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
 
         if (!this->client_ptr_->wait_for_action_server(std::chrono::seconds(2))) {
             RCLCPP_ERROR(this->get_logger(), "Action server not available!");
-            return;
+            return false;
         }
 
         auto send_goal_options = rclcpp_action::Client<Drive>::SendGoalOptions();
@@ -69,13 +69,13 @@ bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
         // Block the worker thread until the main thread resolves the goal handle
         if (goal_handle_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
             RCLCPP_ERROR(this->get_logger(), "Timeout waiting for goal handle");
-            return;
+            return false;
         }
 
         auto goal_handle = goal_handle_future.get();
         if (!goal_handle) {
             RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
-            return;
+            return false;
         }
         auto result_future = this->client_ptr_->async_get_result(goal_handle);
 
@@ -83,8 +83,8 @@ bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
         
         // Block the worker thread until the main thread resolves the goal handle
         if (result_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-            RCLCPP_ERROR(this->get_logger(), "Timeout waiting for goal handle");
-            return;
+            RCLCPP_ERROR(this->get_logger(), "Timeout waiting for action result");
+            return false;
         }
         // Inspect the actual result code to ensure the action didn't abort/cancel
         auto result = result_future.get();
@@ -98,11 +98,14 @@ bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
 }
 
 void AutonRoutine::run_routine() {
-    // Note: timer is already canceled in check_and_run
+// Note: timer is already canceled in check_and_run
     RCLCPP_INFO(this->get_logger(), "--- STARTING AUTONOMOUS ---");
 
     // 1. Drive Forward
-    wait_for_drive("DRIVE", 1000.0);
+    if (!wait_for_drive("DRIVE", 1000.0)) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to drive forward. Aborting routine.");
+        return;
+    }
 
     // 2. Fire IR (Antenna 3, Blue)
     auto msg = std_msgs::msg::UInt8();
@@ -111,10 +114,16 @@ void AutonRoutine::run_routine() {
     RCLCPP_INFO(this->get_logger(), "IR Fired.");
 
     // 3. Turn 
-    wait_for_drive("TURN", 90.0);
+    if (!wait_for_drive("TURN", 90.0)) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to turn. Aborting routine.");
+        return;
+    }
 
     // 4. Drive Backward
-    wait_for_drive("DRIVE", -1000.0);
+    if (!wait_for_drive("DRIVE", -1000.0)) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to drive backward. Aborting routine.");
+        return;
+    }
 
     RCLCPP_INFO(this->get_logger(), "--- AUTONOMOUS FINISHED ---");
 }
