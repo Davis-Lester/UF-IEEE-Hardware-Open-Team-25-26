@@ -55,14 +55,15 @@ void TankOdometry::update(int32_t fl_ticks, int32_t fr_ticks,
     calculateDelta(dfl, dfr, drl, drr, d_forward_mm, d_rotation_rad);
     
     float d_forward_inches = d_forward_mm / 25.4f;
-    
-    // Transform to global frame using current heading
-    float cos_theta = std::cos(current_pose_.theta_rad);
-    float sin_theta = std::sin(current_pose_.theta_rad);
-    
+
+    // Use midpoint heading for accurate arc projection
+    float heading_mid = (current_pose_.theta_rad + heading_rad) * 0.5f;
+    float cos_theta = std::cos(heading_mid);
+    float sin_theta = std::sin(heading_mid);
+
     float dx_global = d_forward_inches * cos_theta;
     float dy_global = d_forward_inches * sin_theta;
-    
+
     // Update pose
     current_pose_.x_inches += dx_global;
     current_pose_.y_inches += dy_global;

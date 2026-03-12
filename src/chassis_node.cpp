@@ -365,7 +365,7 @@ void ChassisNode::handle_encoder_tick(int gpio, int level) {
 }
 
 void ChassisNode::stop_motors() {
-    set_tank_power0(0, 0);
+    set_tank_power(0, 0);
 }
 
 // Action callbacks
