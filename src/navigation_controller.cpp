@@ -328,6 +328,7 @@ bool NavigationController::turnToHeading(float target_heading_rad, float toleran
     }
 }
 
+
 bool NavigationController::driveDistance(float target_distance_inches, float desired_heading_rad,
                                         float tolerance_inches, float max_speed) {
     // is_valid_ already checked by caller
@@ -374,9 +375,9 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
         if (forward_speed > max_speed) forward_speed = max_speed;
         if (forward_speed < -max_speed) forward_speed = -max_speed;
         
-        // Minor heading correction
+        // Minor heading correction using named constant
         float heading_error = normalizeAngle(desired_heading_rad - current.theta_rad);
-        float heading_correction = head_pid.calculate(heading_error, dt) * 0.3f;  // Scale down correction
+        float heading_correction = head_pid.calculate(heading_error, dt) * HEADING_CORRECTION_SCALE;
         
         if (debug_logging_) {
             RCLCPP_INFO(node_->get_logger(),
@@ -407,6 +408,10 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
     local_distance_pid.reset();
     local_heading_pid.reset();
     
+    // Track phase to detect transitions (turning vs driving)
+    enum Phase { TURNING, DRIVING };
+    Phase current_phase = TURNING;  // Start assuming we need to turn
+    
     while (true) {
         // Check deadline
         auto now = std::chrono::steady_clock::now();
@@ -435,9 +440,22 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
         float target_heading = calculateHeading(dx, dy);
         float heading_error = normalizeAngle(target_heading - current.theta_rad);
         
-        // If heading error is large, perform in-place turn
-        if (std::abs(heading_error) > 0.15f) {  // ~8.6 degrees
-            // Inline turn logic to respect shared deadline
+        // Determine phase based on heading error
+        Phase new_phase = (std::abs(heading_error) > 0.15f) ? TURNING : DRIVING;
+        
+        // Detect phase transition and reset heading PID to prevent integral windup carry-over
+        if (new_phase != current_phase) {
+            local_heading_pid.reset();
+            current_phase = new_phase;
+            if (debug_logging_) {
+                RCLCPP_DEBUG(node_->get_logger(), 
+                    "driveToPoint: Phase transition to %s", 
+                    (current_phase == TURNING) ? "TURNING" : "DRIVING");
+            }
+        }
+        
+        if (current_phase == TURNING) {
+            // In-place turn logic
             float dt = 0.01f;
             float rotation_speed = local_heading_pid.calculate(heading_error, dt);
             
@@ -455,8 +473,8 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
         } else {
             // Drive forward with minor heading correction
             float dt = 0.01f;
-            float forward_speed = local_distance_pid.calculate(distance, dt) * 0.6f;  // Scale for smooth approach
-            float heading_correction = local_heading_pid.calculate(heading_error, dt) * 0.2f;
+            float forward_speed = local_distance_pid.calculate(distance, dt) * APPROACH_SPEED_SCALE;
+            float heading_correction = local_heading_pid.calculate(heading_error, dt) * APPROACH_HEADING_SCALE;
             
             // Apply max_speed limit
             if (forward_speed > max_speed) forward_speed = max_speed;

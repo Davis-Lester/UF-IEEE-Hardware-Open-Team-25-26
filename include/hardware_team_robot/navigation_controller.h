@@ -49,7 +49,17 @@ public:
                      float heading_kd);
     void setDebugLogging(bool enable);
     
-    // Set chassis interface after construction if needed
+    /*
+     * setChassisInterface - Set or update the chassis interface
+     * 
+     * @param chassis_interface Pointer to ChassisNode or nullptr
+     * 
+     * Lifetime contract: The ChassisNode* is stored as a raw pointer in chassis_
+     * and is NOT owned by NavigationController. Callers MUST ensure the chassis
+     * instance outlives this NavigationController or explicitly set to nullptr
+     * before chassis destruction. Passing nullptr is safe and will cause motor
+     * commands to become no-ops (useful for testing without hardware).
+     */
     void setChassisInterface(ChassisNode* chassis_interface);
 
 private:
@@ -58,6 +68,11 @@ private:
     ChassisNode* chassis_;  // Raw pointer - lifetime managed externally
     bool is_valid_;         // True if node_ and odometry_ are non-null
     bool debug_logging_{false};
+
+    // Control scaling constants
+    static constexpr float HEADING_CORRECTION_SCALE = 0.3f;   // Scale for heading corrections during forward motion
+    static constexpr float APPROACH_SPEED_SCALE = 0.6f;       // Scale for speed when approaching target
+    static constexpr float APPROACH_HEADING_SCALE = 0.2f;     // Scale for heading correction during approach
 
     struct PIDController {
         float kp{1.0f};
