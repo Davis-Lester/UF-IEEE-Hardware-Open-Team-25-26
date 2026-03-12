@@ -6,6 +6,7 @@
 
 enum MountState
 {
+    UNKNOWN,
     STOWED,
     DRIVE_HEIGHT,
     MAX_ELEVATION
