@@ -56,19 +56,21 @@ void ChassisNode::odometry_update_loop() {
             int32_t rr = encoder_driver_->getRearRightTicks();
             
             // Get heading from IMU via gyro integration
+            // Sample time before IMU read to prevent stale dt on failure
+            auto now = std::chrono::high_resolution_clock::now();
+            float dt = std::chrono::duration<float>(now - last_update).count();
+
             float gx, gy, gz;
             if (imu_.readGyro(&gx, &gy, &gz) == 0) {
-                auto now = std::chrono::high_resolution_clock::now();
-                float dt = std::chrono::duration<float>(now - last_update).count();
-                
                 float gz_rad_per_sec = gz * (M_PI / 180.0f);
                 heading_rad += gz_rad_per_sec * dt;
                 
                 // Normalize heading to [-π, π]
                 while (heading_rad > M_PI) heading_rad -= 2.0f * M_PI;
                 while (heading_rad < -M_PI) heading_rad += 2.0f * M_PI;
-                
-                last_update = now;
+            }
+            // Always update timestamp to prevent dt accumulation on failure
+            last_update = now;
             }
             
             // Update odometry with encoder data and IMU heading
@@ -254,10 +256,18 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
         }
         
         if (is_turning) {
-            float gx, gy, gz;
-            imu_.readGyro(&gx, &gy, &gz);
-            current_val += (gz * dt);
-            error = goal->target_value - current_val;
+            if (is_turning) {
+                float gx, gy, gz;
+                // Check IMU read success before using gyro data
+                if (imu_.readGyro(&gx, &gy, &gz) == 0) {
+                    current_val += (gz * dt);
+                    error = goal->target_value - current_val;
+                } else {
+                    // IMU read failed - skip integration, keep previous error
+                    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
+                                        "IMU read failed during turn");
+                }
+            }
         } 
         else {
             // TANK DRIVE: Average all 4 wheels for forward/backward

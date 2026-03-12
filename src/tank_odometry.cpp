@@ -11,7 +11,8 @@ TankOdometry::TankOdometry(float track_width_mm, float wheelbase_mm, float wheel
       last_fl_ticks_(0),
       last_fr_ticks_(0),
       last_rl_ticks_(0),
-      last_rr_ticks_(0) {
+      last_rr_ticks_(0),
+      has_encoder_baseline_(false) {
     
     current_pose_ = {0.0f, 0.0f, 0.0f};
     
@@ -31,11 +32,21 @@ TankOdometry::TankOdometry(float track_width_mm, float wheelbase_mm, float wheel
 TankOdometry::~TankOdometry() {
 }
 
-// ========== Thread-safe update with proper mutex protection ==========
 void TankOdometry::update(int32_t fl_ticks, int32_t fr_ticks,
                           int32_t rl_ticks, int32_t rr_ticks,
                           float heading_rad) {
     std::lock_guard<std::mutex> lock(pose_mutex_);
+    
+    // Initialize encoder baseline on first call to avoid huge delta
+    if (!has_encoder_baseline_) {
+        last_fl_ticks_ = fl_ticks;
+        last_fr_ticks_ = fr_ticks;
+        last_rl_ticks_ = rl_ticks;
+        last_rr_ticks_ = rr_ticks;
+        current_pose_.theta_rad = heading_rad;  // Initialize heading
+        has_encoder_baseline_ = true;
+        return;  // Skip first integration
+    }
     
     // Calculate deltas
     int32_t dfl = fl_ticks - last_fl_ticks_;
@@ -55,21 +66,20 @@ void TankOdometry::update(int32_t fl_ticks, int32_t fr_ticks,
     calculateDelta(dfl, dfr, drl, drr, d_forward_mm, d_rotation_rad);
     
     float d_forward_inches = d_forward_mm / 25.4f;
-
-    // Use midpoint heading for accurate arc projection
+    
+    // UPDATED: Use midpoint heading for accurate arc projection
     float heading_mid = (current_pose_.theta_rad + heading_rad) * 0.5f;
     float cos_theta = std::cos(heading_mid);
     float sin_theta = std::sin(heading_mid);
-
+    
     float dx_global = d_forward_inches * cos_theta;
     float dy_global = d_forward_inches * sin_theta;
-
+    
     // Update pose
     current_pose_.x_inches += dx_global;
     current_pose_.y_inches += dy_global;
     current_pose_.theta_rad = heading_rad;  // Absolute from IMU
 }
-// =============================================================================
 
 TankOdometry::Pose TankOdometry::getCurrentPose() const {
     std::lock_guard<std::mutex> lock(pose_mutex_);

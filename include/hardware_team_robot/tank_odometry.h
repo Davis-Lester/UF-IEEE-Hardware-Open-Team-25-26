@@ -48,6 +48,7 @@ private:
     float wheel_diameter_mm_;
     float mm_per_tick_;
     float inches_per_tick_;
+    bool has_encoder_baseline_; //This tracks if encoder baseline is init
 
     Pose current_pose_;
 
