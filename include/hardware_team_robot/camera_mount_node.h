@@ -19,12 +19,12 @@ public:
 
 private:
 
-    // GPIO Pins (change if needed)
+    // GPIO Pins (dont know whci ones we will use
     const int PIN_MOTOR_A = 17;
     const int PIN_MOTOR_B = 27;
     const int PIN_PWM = 18;
 
-    // Motion timings
+    // Motion timings to change
     const float MAX_TRAVEL_TIME = 2.0;
     const float TIME_STOWED = 0.0;
     const float TIME_DRIVE = 1.2;
@@ -32,7 +32,7 @@ private:
 
     const int MAX_PWM = 200;
 
-    // State
+
     float current_time_pos_;
     MountState current_state_;
 
