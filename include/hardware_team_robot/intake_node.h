@@ -16,7 +16,7 @@ private:
     rclcpp::Time last_intake_cmd_time_;
     rclcpp::TimerBase::SharedPtr watchdog_timer_;
     void watchdog_callback();
-    
+
     // Subscriber for non-blocking intake commands (-1: Reverse, 0: Off, 1: On)
     rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr intake_sub_;
     
@@ -36,7 +36,7 @@ private:
     // - Encoders: 17, 27, 22, 4, 26, 21, 9, 11
 
     
-    // Selected safe pins for the intake motor driver (WILL NEED TO BE MODIFIEDw)
+    // Selected safe pins for the intake motor driver (WILL NEED TO BE MODIFIED)
     static constexpr int INTAKE_PWM_PIN = 12; 
     static constexpr int INTAKE_DIR_PIN = 5;  
 };

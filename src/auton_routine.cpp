@@ -49,6 +49,9 @@ void AutonRoutine::start_light_callback(const std_msgs::msg::Bool::SharedPtr msg
 }
 
 AutonRoutine::~AutonRoutine() {
+    // stop the intake if the auton routine stops for safety
+    set_intake(0);
+
     if (routine_thread_.joinable()) {
         routine_thread_.join();
     }
