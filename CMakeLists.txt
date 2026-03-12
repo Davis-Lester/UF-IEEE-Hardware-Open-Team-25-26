@@ -83,6 +83,12 @@ ament_target_dependencies(intake_node rclcpp std_msgs)
 # ament_target_dependencies(keypad_servo_node rclcpp std_msgs)
 # target_link_libraries(keypad_servo_node sensor_lib ${PIGPIO_LIB})
 
+# Camera Mount Node
+add_executable(camera_mount_node src/camera_mount_node.cpp)
+target_link_libraries(camera_mount_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
+add_dependencies(camera_mount_node ${PROJECT_NAME}__rosidl_generator_cpp)
+ament_target_dependencies(camera_mount_node rclcpp std_msgs)
+
 install(TARGETS
   auton_node
   chassis_node
@@ -90,6 +96,7 @@ install(TARGETS
   ir_node
   # keypad_servo_node
   intake_node
+  camera_mount_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
