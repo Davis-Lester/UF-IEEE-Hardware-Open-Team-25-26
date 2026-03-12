@@ -15,8 +15,10 @@
 
 AutonRoutine::AutonRoutine() : Node("auton_routine") {
     this->client_ptr_ = rclcpp_action::create_client<Drive>(this, "drive_command");
+
     this->ir_pub_ = this->create_publisher<std_msgs::msg::UInt8>("ir_command", 10);
-    
+    this->intake_pub_ = this->create_publisher<std_msgs::msg::Int8>("/intake_cmd", 10);
+
     this->start_light_sub_ = this->create_subscription<std_msgs::msg::Bool>(
     "/start_light_detected", 10,
     std::bind(&AutonRoutine::start_light_callback, this, std::placeholders::_1));
@@ -50,6 +52,13 @@ void AutonRoutine::check_and_run() {
     routine_thread_ = std::thread(&AutonRoutine::run_routine, this);
     }
 }
+
+void AutonRoutine::set_intake(int state){
+    auto msg = std_msgs::msg::Int8();
+    msg.data = state;
+    intake_pub_->publish(msg);
+}
+
 
 // Updated to use the standardized 'target_value' and handle clean shutdowns
 bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double max_speed) {
@@ -129,6 +138,8 @@ void AutonRoutine::run_routine() {
         return;
     }
 
+    // call set intake with (-1 (backwards), 0 (stop), 1 (forward)) for intake motor control
+    
     // 2. Fire IR (Antenna 3, Blue)
     auto msg = std_msgs::msg::UInt8();
     msg.data = 0x5C; 

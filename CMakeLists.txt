@@ -48,12 +48,12 @@ target_link_libraries(sensor_lib ${I2C_LIB} ${PIGPIO_LIB})
 rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
 add_dependencies(sensor_lib ${cpp_typesupport_target})
 
+# Auton Node
 add_executable(auton_node src/auton_routine.cpp)
 target_link_libraries(auton_node sensor_lib "${cpp_typesupport_target}")
 add_dependencies(auton_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(auton_node rclcpp rclcpp_action std_msgs)
 
-# Create nodes
 #Chassis Node needs to be fixed
 add_executable(chassis_node src/chassis_node.cpp)
 target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
@@ -71,19 +71,31 @@ target_link_libraries(camera_node sensor_lib ${OpenCV_LIBRARIES} "${cpp_typesupp
 add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
 
+# Intake Control Node
+add_executable(intake_node src/intake_node.cpp)
+target_link_libraries(intake_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
+add_dependencies(intake_node ${PROJECT_NAME}__rosidl_generator_cpp)
+ament_target_dependencies(intake_node rclcpp std_msgs)
+
 # Keypad Servo node
 # add_executable(keypad_servo_node src/keypad_servo_node.cpp)
 # ament_target_dependencies(keypad_servo_node rclcpp std_msgs)
 # target_link_libraries(keypad_servo_node sensor_lib ${PIGPIO_LIB})
 
 install(TARGETS
-  sensor_lib
   auton_node
   chassis_node
   camera_node
   ir_node
   # keypad_servo_node
+  intake_node
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS sensor_lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 # This ensures your headers are copied to the install space
