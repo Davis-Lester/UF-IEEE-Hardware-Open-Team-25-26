@@ -154,10 +154,10 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         if (!motor_driver_->initialize()) {
             RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s", 
                         motor_driver_->getLastError().c_str());
+            motor_driver_.reset();  // To prevent using failed driver
         } else {
             RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
         }
-        setup_encoders();
         
         // --- Setup Ultrasonic System ---
         Hardware::UltrasonicDriver::Config left_us_cfg{PIN_US_LEFT_TRIG, PIN_US_LEFT_ECHO};
