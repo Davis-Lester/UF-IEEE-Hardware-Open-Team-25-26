@@ -88,16 +88,18 @@ bool PCA9685Driver::initialize() {
     return true;
 }
 
-void PCA9685Driver::getMotorChannels(Motor motor, uint8_t& fwd_ch, uint8_t& rev_ch) const {
+void PCA9685Driver::getMotorChannels(Motor motor, uint8_t& fwd_ch, uint8_t& rev_ch) {
+    // Motor channel mapping matches physical wiring diagram
+    // Note: MOTOR_6 appears before MOTOR_5 because hardware uses
+    // channels 8/9 for M6 and channels 10/11 for M5
     switch (motor) {
-        case MOTOR_1: fwd_ch = 0;  rev_ch = 1;  break;
-        case MOTOR_2: fwd_ch = 2;  rev_ch = 3;  break;
-        case MOTOR_3: fwd_ch = 4;  rev_ch = 5;  break;
-        case MOTOR_4: fwd_ch = 6;  rev_ch = 7;  break;
-        case MOTOR_6: fwd_ch = 8;  rev_ch = 9;  break;
-        case MOTOR_5: fwd_ch = 10; rev_ch = 11; break;
+        case MOTOR_1: fwd_ch = 0;  rev_ch = 1;  break;  // M1: LED0/LED1
+        case MOTOR_2: fwd_ch = 2;  rev_ch = 3;  break;  // M2: LED2/LED3
+        case MOTOR_3: fwd_ch = 4;  rev_ch = 5;  break;  // M3: LED4/LED5
+        case MOTOR_4: fwd_ch = 6;  rev_ch = 7;  break;  // M4: LED6/LED7
+        case MOTOR_6: fwd_ch = 8;  rev_ch = 9;  break;  // M6: LED8/LED9
+        case MOTOR_5: fwd_ch = 10; rev_ch = 11; break;  // M5: LED10/LED11
         default: 
-            // Invalid motor ID - set to sentinel values
             fwd_ch = 0xFF; 
             rev_ch = 0xFF;
             last_error_ = "Invalid motor ID in getMotorChannels";
@@ -112,37 +114,45 @@ void PCA9685Driver::setMotorSpeed(Motor motor, int8_t speed) {
 
     uint8_t fwd_ch, rev_ch;
     getMotorChannels(motor, fwd_ch, rev_ch);
+    
+    // Check for invalid motor ID sentinel values
+    if (fwd_ch == 0xFF || rev_ch == 0xFF) {
+        return; // getMotorChannels already set last_error_
+    }
 
     uint16_t pwm_value = static_cast<uint16_t>((std::abs(speed) * 4095) / 100);
 
-    // Helper lambda for setting PWM with proper full-on/full-off handling
     auto set_channel = [this](uint8_t ch, uint16_t value) {
         if (value == 0) {
-            // Full OFF: use bit 4 of OFF_H register [1]
             setPWM(ch, 0, 4096);
         } else if (value >= 4095) {
-            // Full ON: use bit 4 of ON_H register [1]
             setPWM(ch, 4096, 0);
         } else {
-            // Normal PWM
             setPWM(ch, 0, value);
         }
     };
 
     if (speed > 0) {
         set_channel(fwd_ch, pwm_value);
-        setPWM(rev_ch, 0, 4096);  // Full OFF [1]
+        setPWM(rev_ch, 0, 4096);
     } else if (speed < 0) {
-        setPWM(fwd_ch, 0, 4096);  // Full OFF [1]
+        setPWM(fwd_ch, 0, 4096);
         set_channel(rev_ch, pwm_value);
     } else {
-        // Both OFF for coast mode
         setPWM(fwd_ch, 0, 4096);
         setPWM(rev_ch, 0, 4096);
     }
 }
 
 void PCA9685Driver::stopMotor(Motor motor) {
+    uint8_t fwd_ch, rev_ch;
+    getMotorChannels(motor, fwd_ch, rev_ch);
+    
+    // Check for invalid motor ID
+    if (fwd_ch == 0xFF || rev_ch == 0xFF) {
+        return;
+    }
+    
     setMotorSpeed(motor, 0);
 }
 

@@ -51,7 +51,7 @@ private:
         return REG_LED0_ON_L + (4 * channel);
     }
     
-    void getMotorChannels(Motor motor, uint8_t& fwd_ch, uint8_t& rev_ch) const;
+    void getMotorChannels(Motor motor, uint8_t& fwd_ch, uint8_t& rev_ch);
     
     // Helper to clean up on init failure
     void cleanupOnFailure();
