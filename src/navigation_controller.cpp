@@ -1,4 +1,5 @@
 #include "hardware_team_robot/navigation_controller.h"
+#include "hardware_team_robot/chassis_node.h"  // Include actual chassis interface
 #include <cstdio>
 #include <thread>
 #include <chrono>
@@ -43,19 +44,35 @@ void NavigationController::PIDController::reset() {
 }
 
 NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
-                                         std::shared_ptr<rclcpp::Node> rclcpp_node)
-    : odometry_(odom), node_(rclcpp_node) {
+                                         std::shared_ptr<rclcpp::Node> rclcpp_node,
+                                         ChassisNode* chassis_interface)
+    : odometry_(odom), 
+      node_(rclcpp_node), 
+      chassis_(chassis_interface),
+      is_valid_(false) {
     
-    // Validate critical dependencies
+    // REQUIRED: Both node_ and odometry_ must be non-null for controller to function
     if (!node_) {
-        fprintf(stderr, "[NavigationController] ERROR: ROS node is null - logging will be disabled\n");
+        fprintf(stderr, "[NavigationController] FATAL: ROS node is null - controller is INVALID\n");
+        return;
     }
+    
     if (!odometry_) {
-        fprintf(stderr, "[NavigationController] ERROR: Odometry is null - navigation will fail\n");
+        RCLCPP_ERROR(node_->get_logger(), 
+            "[NavigationController] FATAL: Odometry is null - controller is INVALID");
+        return;
     }
+    
+    // OPTIONAL: Chassis can be set later, but motors won't move without it
+    if (!chassis_) {
+        RCLCPP_WARN(node_->get_logger(), 
+            "[NavigationController] Chassis interface is null - motor commands will be no-ops");
+    }
+    
+    // Mark as valid only if required dependencies are present
+    is_valid_ = true;
     
     // Initialize PID controllers with reasonable defaults for tank drive
-    // These may need tuning based on actual robot performance
     distance_pid_.kp = 0.5f;
     distance_pid_.ki = 0.05f;
     distance_pid_.kd = 0.2f;
@@ -64,26 +81,56 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
     heading_pid_.ki = 0.1f;
     heading_pid_.kd = 0.3f;
     
-    if (node_) {
-        RCLCPP_INFO(node_->get_logger(), "[NavigationController] Initialized for Tank Drive");
-    }
+    RCLCPP_INFO(node_->get_logger(), "[NavigationController] Initialized for Tank Drive");
 }
 
 NavigationController::~NavigationController() {
     stop();
 }
 
+void NavigationController::setChassisInterface(ChassisNode* chassis_interface) {
+    chassis_ = chassis_interface;
+    if (node_) {
+        if (chassis_) {
+            RCLCPP_INFO(node_->get_logger(), "[NavigationController] Chassis interface connected");
+        } else {
+            RCLCPP_WARN(node_->get_logger(), "[NavigationController] Chassis interface disconnected");
+        }
+    }
+}
+
+void NavigationController::sendTankSpeeds(float left_speed, float right_speed) {
+    if (!chassis_) {
+        // Chassis not connected - this is expected during testing/setup
+        if (debug_logging_ && node_) {
+            RCLCPP_DEBUG(node_->get_logger(), 
+                "[NavigationController] No chassis - would send L=%.1f R=%.1f", 
+                left_speed, right_speed);
+        }
+        return;
+    }
+    
+    // Send actual motor commands
+    chassis_->setTankSpeeds(left_speed, right_speed);
+}
+
 bool NavigationController::moveToPose(float target_x_inches, float target_y_inches,
                                       float target_theta_rad,
                                       float max_speed, float tolerance_inches,
                                       float angle_tolerance_rad) {
-    if (!node_) {
-        fprintf(stderr, "[NavigationController] ERROR: ROS node is null\n");
+    // Validate controller state (REQUIRED dependencies must be present)
+    if (!is_valid_) {
+        if (node_) {
+            RCLCPP_ERROR(node_->get_logger(), 
+                "[NavigationController] Controller is INVALID - missing required dependencies");
+        }
         return false;
     }
     
-    if (!odometry_) {
-        RCLCPP_ERROR(node_->get_logger(), "Odometry not initialized");
+    // Validate speed parameter at API boundary
+    if (max_speed <= 0.0f) {
+        RCLCPP_ERROR(node_->get_logger(), 
+            "[NavigationController] Invalid max_speed=%.1f (must be > 0)", max_speed);
         return false;
     }
     
@@ -126,13 +173,19 @@ bool NavigationController::moveToPose(float target_x_inches, float target_y_inch
 
 bool NavigationController::moveToPoint(float target_x_inches, float target_y_inches,
                                        float max_speed, float tolerance_inches) {
-    if (!node_) {
-        fprintf(stderr, "[NavigationController] ERROR: ROS node is null\n");
+    // Validate controller state (REQUIRED dependencies must be present)
+    if (!is_valid_) {
+        if (node_) {
+            RCLCPP_ERROR(node_->get_logger(), 
+                "[NavigationController] Controller is INVALID - missing required dependencies");
+        }
         return false;
     }
     
-    if (!odometry_) {
-        RCLCPP_ERROR(node_->get_logger(), "Odometry not initialized");
+    // Validate speed parameter at API boundary
+    if (max_speed <= 0.0f) {
+        RCLCPP_ERROR(node_->get_logger(), 
+            "[NavigationController] Invalid max_speed=%.1f (must be > 0)", max_speed);
         return false;
     }
     
@@ -157,33 +210,21 @@ TankOdometry::Pose NavigationController::getCurrentPose() const {
 }
 
 void NavigationController::resetOdometry() {
-    if (!odometry_) {
-        if (node_) {
-            RCLCPP_ERROR(node_->get_logger(), "[NavigationController] Cannot reset - odometry is null");
-        }
+    if (!is_valid_) {
         return;
     }
     
     odometry_->reset();
-    
-    if (node_) {
-        RCLCPP_INFO(node_->get_logger(), "[NavigationController] Odometry reset");
-    }
+    RCLCPP_INFO(node_->get_logger(), "[NavigationController] Odometry reset");
 }
 
 void NavigationController::stop() {
-    if (!node_) {
-        return;
+    // Send actual stop command to chassis
+    sendTankSpeeds(0.0f, 0.0f);
+    
+    if (node_) {
+        RCLCPP_INFO(node_->get_logger(), "[NavigationController] Stop command sent");
     }
-    
-    // TODO: Send zero velocity commands to chassis
-    // This should call the actual chassis interface when available
-    // Example: chassis_->setTankSpeeds(0.0f, 0.0f);
-    
-    RCLCPP_INFO(node_->get_logger(), "[NavigationController] Stop command issued");
-    
-    // Note: Currently this only logs. Integration with ChassisNode required
-    // to send actual motor stop commands.
 }
 
 void NavigationController::setPIDGains(float distance_kp, float distance_ki, float distance_kd,
@@ -232,12 +273,7 @@ float NavigationController::normalizeAngle(float angle_rad) const {
 }
 
 bool NavigationController::turnToHeading(float target_heading_rad, float tolerance_rad, float max_speed) {
-    if (!node_ || !odometry_) {
-        return false;
-    }
-    
-    // IMPORTANT: This is a BLOCKING call. In a real ROS 2 system, this should be refactored
-    // to use an action server or timer-based approach.
+    // is_valid_ already checked by caller (moveToPose/moveToPoint)
     
     auto start_time = std::chrono::steady_clock::now();
     PIDController pid = heading_pid_;  // Local copy for this movement
@@ -283,9 +319,9 @@ bool NavigationController::turnToHeading(float target_heading_rad, float toleran
                 current_heading, target_heading_rad, error, rotation_speed);
         }
         
-        // TODO: Send differential rotation command to chassis
+        // Send differential rotation command to chassis
         // For tank drive: left_speed = -rotation_speed, right_speed = +rotation_speed
-        // chassis_->setTankSpeeds(-rotation_speed, rotation_speed);
+        sendTankSpeeds(-rotation_speed, rotation_speed);
         
         // Sleep briefly
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -294,11 +330,8 @@ bool NavigationController::turnToHeading(float target_heading_rad, float toleran
 
 bool NavigationController::driveDistance(float target_distance_inches, float desired_heading_rad,
                                         float tolerance_inches, float max_speed) {
-    if (!node_ || !odometry_) {
-        return false;
-    }
+    // is_valid_ already checked by caller
     
-    // IMPORTANT: This is a BLOCKING call. See note in turnToHeading().
     auto start_time = std::chrono::steady_clock::now();
     
     auto start_pose = odometry_->getCurrentPose();
@@ -351,10 +384,10 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
                 distance_traveled, target_distance_inches, forward_speed, heading_correction);
         }
         
-        // TODO: Send tank drive commands with heading correction
-        // left_speed = forward_speed - heading_correction
-        // right_speed = forward_speed + heading_correction
-        // chassis_->setTankSpeeds(forward_speed - heading_correction, forward_speed + heading_correction);
+        // Send tank drive commands with heading correction
+        float left_speed = forward_speed - heading_correction;
+        float right_speed = forward_speed + heading_correction;
+        sendTankSpeeds(left_speed, right_speed);
         
         // Sleep briefly
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -363,12 +396,7 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
 
 bool NavigationController::driveToPoint(float target_x_inches, float target_y_inches,
                                        float tolerance_inches, float max_speed) {
-    if (!node_ || !odometry_) {
-        return false;
-    }
-    
-    // For tank drive, this uses a turn-drive approach with shared deadline
-    // IMPORTANT: This is a BLOCKING call. See note in turnToHeading().
+    // is_valid_ already checked by caller
     
     auto deadline = std::chrono::steady_clock::now() + 
                     std::chrono::duration<float>(MOVEMENT_TIMEOUT_SEC);
@@ -422,8 +450,8 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
                     "driveToPoint: turning, heading_error=%.3f rad", heading_error);
             }
             
-            // TODO: Send rotation command
-            // chassis_->setTankSpeeds(-rotation_speed, rotation_speed);
+            // Send rotation command
+            sendTankSpeeds(-rotation_speed, rotation_speed);
         } else {
             // Drive forward with minor heading correction
             float dt = 0.01f;
@@ -440,8 +468,10 @@ bool NavigationController::driveToPoint(float target_x_inches, float target_y_in
                     distance, heading_error);
             }
             
-            // TODO: Send velocity commands
-            // chassis_->setTankSpeeds(forward_speed - heading_correction, forward_speed + heading_correction);
+            // Send velocity commands
+            float left_speed = forward_speed - heading_correction;
+            float right_speed = forward_speed + heading_correction;
+            sendTankSpeeds(left_speed, right_speed);
         }
         
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

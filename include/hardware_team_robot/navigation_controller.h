@@ -15,10 +15,16 @@ namespace Hardware {
 
 class NavigationController {
 public:
+    // Constructor requires non-null odometry and ROS node
+    // chassis_interface is optional but motors won't move without it
     NavigationController(std::shared_ptr<TankOdometry> odom,
-                         std::shared_ptr<rclcpp::Node> rclcpp_node);
+                         std::shared_ptr<rclcpp::Node> rclcpp_node,
+                         ChassisNode* chassis_interface = nullptr);
     
     ~NavigationController();
+
+    // Returns true if controller is properly initialized
+    bool isValid() const { return is_valid_; }
 
     bool moveToPose(float target_x_inches,
                     float target_y_inches,
@@ -42,10 +48,15 @@ public:
                      float heading_ki,
                      float heading_kd);
     void setDebugLogging(bool enable);
+    
+    // Set chassis interface after construction if needed
+    void setChassisInterface(ChassisNode* chassis_interface);
 
 private:
     std::shared_ptr<TankOdometry> odometry_;
     std::shared_ptr<rclcpp::Node> node_;
+    ChassisNode* chassis_;  // Raw pointer - lifetime managed externally
+    bool is_valid_;         // True if node_ and odometry_ are non-null
     bool debug_logging_{false};
 
     struct PIDController {
@@ -69,6 +80,7 @@ private:
     float calculateHeading(float dx, float dy) const;
     float normalizeAngle(float angle_rad) const;
 
+    // Internal motion primitives
     bool turnToHeading(float target_heading_rad,
                        float tolerance_rad = 0.035f,
                        float max_speed = 150.0f);
@@ -82,6 +94,9 @@ private:
                       float target_y_inches,
                       float tolerance_inches = 1.0f,
                       float max_speed = 150.0f);
+    
+    // Helper to send tank commands safely
+    void sendTankSpeeds(float left_speed, float right_speed);
 };
 
 } // namespace Hardware
