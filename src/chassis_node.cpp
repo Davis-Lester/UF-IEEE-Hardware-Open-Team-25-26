@@ -59,7 +59,6 @@ void ChassisNode::odometry_update_loop() {
             // Sample time before IMU read to prevent stale dt on failure
             auto now = std::chrono::high_resolution_clock::now();
             float dt = std::chrono::duration<float>(now - last_update).count();
-
             float gx, gy, gz;
             if (imu_.readGyro(&gx, &gy, &gz) == 0) {
                 float gz_rad_per_sec = gz * (M_PI / 180.0f);
@@ -75,44 +74,20 @@ void ChassisNode::odometry_update_loop() {
             
             // Update odometry with encoder data and IMU heading
             odometry_->update(fl, fr, rl, rr, heading_rad);
-        }
-            // --- START LIGHT DETECTION  ---
-            // Check for competition start light (ONE-TIME detection)
-            // Runs at 100 Hz until detected, then stops checking
-            if (start_light_sensor_ && !start_light_detected_ && !start_light_disabled_) {
-                uint16_t white = 0;
-                
-                if (start_light_sensor_->readWhite(white)) { // Use new bool return API
-                    // Use floating-point ratio to avoid overflow when baseline_white_ >= 32768
-                    if (baseline_white_ > 0 && (static_cast<double>(white) / static_cast<double>(baseline_white_)) > 2.0) {
-                        start_light_detected_ = true;
-                        RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
-                                    white, baseline_white_);
-                        
-                        auto msg = std_msgs::msg::Bool();
-                        msg.data = true;
-                        start_light_pub_->publish(msg);
-                    }
-                }
-            }
-
-
+            
             // --- Ultrasonic Correction Block (Runs at 10Hz) ---
             ultrasonic_counter++;
             if (ultrasonic_counter >= 10 && ultrasonic_driver_) { 
                 ultrasonic_counter = 0;
-
                 float left_dist = ultrasonic_driver_->getLeftDistance();
                 float right_dist = ultrasonic_driver_->getRightDistance();
                 
                 bool left_valid = (left_dist > 0.0f && left_dist < 24.0f);
                 bool right_valid = (right_dist > 0.0f && right_dist < 24.0f);
-
                 if (left_valid || right_valid) {
                     Hardware::TankOdometry::Pose current_pose = odometry_->getCurrentPose();
                     float new_y = current_pose.y_inches;
                     bool update_needed = false;
-
                     // Calculate proposed Y coordinates
                     if (left_valid && right_valid) {
                         float y_left = calculate_y_from_wall(current_pose, left_dist, US_LEFT_OFFSET_X, US_LEFT_OFFSET_Y, KNOWN_LEFT_WALL_Y);
@@ -130,7 +105,6 @@ void ChassisNode::odometry_update_loop() {
                         new_y = calculate_y_from_wall(current_pose, -right_dist, US_RIGHT_OFFSET_X, US_RIGHT_OFFSET_Y, KNOWN_RIGHT_WALL_Y);
                         update_needed = true;
                     }
-
                     // Apply the update once
                     if (update_needed) {
                         float error = std::abs(current_pose.y_inches - new_y);
@@ -145,7 +119,28 @@ void ChassisNode::odometry_update_loop() {
                 // Ping the sensors for the next cycle
                 ultrasonic_driver_->trigger();
             }
+        } // <-- MOVED: Closing brace now protects ultrasonic block
+        
+        // --- START LIGHT DETECTION  ---
+        // Check for competition start light (ONE-TIME detection)
+        // Runs at 100 Hz until detected, then stops checking
+        if (start_light_sensor_ && !start_light_detected_ && !start_light_disabled_) {
+            uint16_t white = 0;
+            
+            if (start_light_sensor_->readWhite(white)) { // Use new bool return API
+                // Use floating-point ratio to avoid overflow when baseline_white_ >= 32768
+                if (baseline_white_ > 0 && (static_cast<double>(white) / static_cast<double>(baseline_white_)) > 2.0) {
+                    start_light_detected_ = true;
+                    RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
+                                white, baseline_white_);
+                    
+                    auto msg = std_msgs::msg::Bool();
+                    msg.data = true;
+                    start_light_pub_->publish(msg);
+                }
+            }
         }
+        
         loop_rate.sleep();
     }
 }
