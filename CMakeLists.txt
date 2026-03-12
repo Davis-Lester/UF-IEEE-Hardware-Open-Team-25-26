@@ -73,12 +73,9 @@ ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge se
 
 # Keypad Servo node
 add_executable(keypad_servo_node src/keypad_servo_node.cpp)
-target_include_directories(keypad_servo_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
 ament_target_dependencies(keypad_servo_node rclcpp std_msgs)
-target_link_libraries(keypad_servo_node ${PIGPIO_LIB})
+target_link_libraries(keypad_servo_node sensor_lib ${PIGPIO_LIB})
+
 
 
 # Odometry test node
