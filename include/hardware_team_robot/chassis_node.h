@@ -9,7 +9,7 @@
 #include "hardware_team_robot/encoder_driver.h"
 #include "hardware_team_robot/sensors/UltrasonicDistance.h"
 #include "hardware_team_robot/sensors/VEML7700.h"  
-#include "hardware_team_robot/pca9685_driver.h"
+#include "hardware_team_robot/sensors/pca9685_driver.h"
 #include "std_msgs/msg/bool.hpp"
 #include <pigpio.h>
 #include <atomic>
