@@ -1,8 +1,9 @@
 #include "hardware_team_robot/intake_node.h"
 #include <pigpio.h>
 #include <stdexcept>
+#include <chrono> // Added for time and duration
 
-IntakeNode::IntakeNode() : Node("intake_node") {
+IntakeNode::IntakeNode() : Node("intake_node"), last_intake_cmd_time_(this->now()) {
     RCLCPP_INFO(this->get_logger(), "Initializing Intake Node...");
 
     if (gpioInitialise() < 0) {
@@ -17,6 +18,7 @@ IntakeNode::IntakeNode() : Node("intake_node") {
     // Safety: Ensure the motor is strictly off at startup
     stop_intake();
 
+    // Reinstated the transient_local QoS for startup reliability
     rclcpp::QoS intake_qos(10);
     intake_qos.transient_local();
     intake_qos.reliable();
@@ -24,6 +26,12 @@ IntakeNode::IntakeNode() : Node("intake_node") {
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
         "/intake_cmd", intake_qos,
         std::bind(&IntakeNode::intake_callback, this, std::placeholders::_1)
+    );
+
+    // Watchdog Timer: Checks every 500ms
+    watchdog_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(500),
+        std::bind(&IntakeNode::watchdog_callback, this)
     );
 
     RCLCPP_INFO(this->get_logger(), "Intake Node ready and listening on /intake_cmd");
@@ -40,8 +48,20 @@ IntakeNode::~IntakeNode() {
 }
 
 void IntakeNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
+    // Reset the watchdog timer on every received command
+    last_intake_cmd_time_ = this->now();
+    
     // Pass the requested state directly to the hardware logic
     set_intake_hardware(msg->data);
+}
+
+void IntakeNode::watchdog_callback() {
+    // If more than 1.0 second has passed since the last command, auto-stop
+    if ((this->now() - last_intake_cmd_time_).seconds() > 1.0) {
+        // Call set_intake_hardware(0) so the static current_state updates correctly.
+        // If it is already 0, the function will safely ignore it.
+        set_intake_hardware(0);
+    }
 }
 
 void IntakeNode::set_intake_hardware(int state) {

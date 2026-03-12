@@ -39,6 +39,10 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr intake_pub_; // pubish to this to com w intake
 
+    std::atomic<int> current_intake_state_{0};
+    rclcpp::TimerBase::SharedPtr intake_publish_timer_;
+    void intake_publish_callback();
+    
     // Start Light Detection Subscriber
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
     std::atomic<bool> start_detected_{false};

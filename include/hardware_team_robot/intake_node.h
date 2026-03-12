@@ -13,6 +13,10 @@ public:
     ~IntakeNode();
 
 private:
+    rclcpp::Time last_intake_cmd_time_;
+    rclcpp::TimerBase::SharedPtr watchdog_timer_;
+    void watchdog_callback();
+    
     // Subscriber for non-blocking intake commands (-1: Reverse, 0: Off, 1: On)
     rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr intake_sub_;
     

@@ -32,8 +32,13 @@ AutonRoutine::AutonRoutine() : Node("auton_routine") {
 
     // Check for start signal every 50ms
     timer_ = this->create_wall_timer(
-    std::chrono::milliseconds(50), 
-    std::bind(&AutonRoutine::check_and_run, this));
+        std::chrono::milliseconds(50), 
+        std::bind(&AutonRoutine::check_and_run, this));
+
+    // --- NEW: Continuous Intake Publisher Timer (10Hz) ---
+    intake_publish_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(100),
+        std::bind(&AutonRoutine::intake_publish_callback, this));
 }
 
 void AutonRoutine::start_light_callback(const std_msgs::msg::Bool::SharedPtr msg) {
@@ -53,16 +58,23 @@ void AutonRoutine::check_and_run() {
     if (start_detected_) {
         timer_->cancel();  // Stop checking
         
-    // Spawn a new thread to run the blocking sequence off the main executor
-    routine_thread_ = std::thread(&AutonRoutine::run_routine, this);
+        // Spawn a new thread to run the blocking sequence off the main executor
+        routine_thread_ = std::thread(&AutonRoutine::run_routine, this);
     }
 }
 
+// --- NEW: Update the state and let the timer handle the publishing ---
 void AutonRoutine::set_intake(int state){
+    current_intake_state_.store(state);
+    intake_publish_callback(); // Publish immediately for zero-latency response
+}
+
+void AutonRoutine::intake_publish_callback() {
     auto msg = std_msgs::msg::Int8();
-    msg.data = state;
+    msg.data = current_intake_state_.load();
     intake_pub_->publish(msg);
 }
+// ---------------------------------------------------------------------
 
 // Updated to use the standardized 'target_value' and handle clean shutdowns
 bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double max_speed) {
