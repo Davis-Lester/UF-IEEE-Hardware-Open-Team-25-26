@@ -1,4 +1,5 @@
 #include "hardware_team_robot/camera_mount_node.h"
+#include "rclcpp/executors/multi_threaded_executor.hpp"
 #include <chrono>
 #include <cmath>
 #include <algorithm>
@@ -188,7 +189,11 @@ int main(int argc, char ** argv)
 {
     rclcpp::init(argc, argv);
 
-    rclcpp::spin(std::make_shared<CameraMountNode>());
+    auto node = std::make_shared<CameraMountNode>();
+
+    rclcpp::executors::MultiThreadedExecutor executor;
+    executor.add_node(node);
+    executor.spin();
 
     rclcpp::shutdown();
 
