@@ -46,6 +46,14 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
                                          std::shared_ptr<rclcpp::Node> rclcpp_node)
     : odometry_(odom), node_(rclcpp_node) {
     
+    // Validate critical dependencies
+    if (!node_) {
+        fprintf(stderr, "[NavigationController] ERROR: ROS node is null - logging will be disabled\n");
+    }
+    if (!odometry_) {
+        fprintf(stderr, "[NavigationController] ERROR: Odometry is null - navigation will fail\n");
+    }
+    
     // Initialize PID controllers with reasonable defaults for tank drive
     // These may need tuning based on actual robot performance
     distance_pid_.kp = 0.5f;
@@ -56,7 +64,9 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
     heading_pid_.ki = 0.1f;
     heading_pid_.kd = 0.3f;
     
-    RCLCPP_INFO(node_->get_logger(), "[NavigationController] Initialized for Tank Drive");
+    if (node_) {
+        RCLCPP_INFO(node_->get_logger(), "[NavigationController] Initialized for Tank Drive");
+    }
 }
 
 NavigationController::~NavigationController() {
@@ -67,6 +77,11 @@ bool NavigationController::moveToPose(float target_x_inches, float target_y_inch
                                       float target_theta_rad,
                                       float max_speed, float tolerance_inches,
                                       float angle_tolerance_rad) {
+    if (!node_) {
+        fprintf(stderr, "[NavigationController] ERROR: ROS node is null\n");
+        return false;
+    }
+    
     if (!odometry_) {
         RCLCPP_ERROR(node_->get_logger(), "Odometry not initialized");
         return false;
@@ -111,6 +126,11 @@ bool NavigationController::moveToPose(float target_x_inches, float target_y_inch
 
 bool NavigationController::moveToPoint(float target_x_inches, float target_y_inches,
                                        float max_speed, float tolerance_inches) {
+    if (!node_) {
+        fprintf(stderr, "[NavigationController] ERROR: ROS node is null\n");
+        return false;
+    }
+    
     if (!odometry_) {
         RCLCPP_ERROR(node_->get_logger(), "Odometry not initialized");
         return false;
@@ -137,8 +157,16 @@ TankOdometry::Pose NavigationController::getCurrentPose() const {
 }
 
 void NavigationController::resetOdometry() {
-    if (odometry_) {
-        odometry_->reset();
+    if (!odometry_) {
+        if (node_) {
+            RCLCPP_ERROR(node_->get_logger(), "[NavigationController] Cannot reset - odometry is null");
+        }
+        return;
+    }
+    
+    odometry_->reset();
+    
+    if (node_) {
         RCLCPP_INFO(node_->get_logger(), "[NavigationController] Odometry reset");
     }
 }
@@ -168,9 +196,11 @@ void NavigationController::setPIDGains(float distance_kp, float distance_ki, flo
     heading_pid_.ki = heading_ki;
     heading_pid_.kd = heading_kd;
     
-    RCLCPP_INFO(node_->get_logger(),
-        "[NavigationController] PID gains updated - Distance(%.2f,%.2f,%.2f) Heading(%.2f,%.2f,%.2f)",
-        distance_kp, distance_ki, distance_kd, heading_kp, heading_ki, heading_kd);
+    if (node_) {
+        RCLCPP_INFO(node_->get_logger(),
+            "[NavigationController] PID gains updated - Distance(%.2f,%.2f,%.2f) Heading(%.2f,%.2f,%.2f)",
+            distance_kp, distance_ki, distance_kd, heading_kp, heading_ki, heading_kd);
+    }
 }
 
 void NavigationController::setDebugLogging(bool enable) {
@@ -202,6 +232,10 @@ float NavigationController::normalizeAngle(float angle_rad) const {
 }
 
 bool NavigationController::turnToHeading(float target_heading_rad, float tolerance_rad, float max_speed) {
+    if (!node_ || !odometry_) {
+        return false;
+    }
+    
     // IMPORTANT: This is a BLOCKING call. In a real ROS 2 system, this should be refactored
     // to use an action server or timer-based approach.
     
@@ -260,6 +294,10 @@ bool NavigationController::turnToHeading(float target_heading_rad, float toleran
 
 bool NavigationController::driveDistance(float target_distance_inches, float desired_heading_rad,
                                         float tolerance_inches, float max_speed) {
+    if (!node_ || !odometry_) {
+        return false;
+    }
+    
     // IMPORTANT: This is a BLOCKING call. See note in turnToHeading().
     auto start_time = std::chrono::steady_clock::now();
     
@@ -325,6 +363,10 @@ bool NavigationController::driveDistance(float target_distance_inches, float des
 
 bool NavigationController::driveToPoint(float target_x_inches, float target_y_inches,
                                        float tolerance_inches, float max_speed) {
+    if (!node_ || !odometry_) {
+        return false;
+    }
+    
     // For tank drive, this uses a turn-drive approach with shared deadline
     // IMPORTANT: This is a BLOCKING call. See note in turnToHeading().
     
