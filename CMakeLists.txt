@@ -35,6 +35,7 @@ add_library(sensor_lib SHARED
     src/navigation_controller.cpp
     src/tank_odometry.cpp
     src/encoder_driver.cpp
+    src/sensors/pca9685_driver.cpp
 )
 target_include_directories(sensor_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

@@ -88,7 +88,7 @@ bool PCA9685Driver::initialize() {
     return true;
 }
 
-void PCA9685Driver::getMotorChannels(Motor motor, uint8_t& fwd_ch, uint8_t& rev_ch) const {
+void PCA9685Driver::getMotorChannels(Motor motor, uint8_t& fwd_ch, uint8_t& rev_ch) {
     switch (motor) {
         case MOTOR_1: fwd_ch = 0;  rev_ch = 1;  break;
         case MOTOR_2: fwd_ch = 2;  rev_ch = 3;  break;
