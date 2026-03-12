@@ -1,6 +1,6 @@
 // Name: Davis Lester
 // Date: 2/5/2026
-// Description: Mecanum Drive PID Chassis Node (4 Motor / 4 Encoder)
+// Description: Tank Drive PID Chassis Node (4 Motor / 4 Encoder)
 
 #include "hardware_team_robot/chassis_node.h"
 #include <cmath>
@@ -166,7 +166,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         }
     }
 
-    // Default chassis dimensions for MecanumOdometry
+    // Default chassis dimensions for Tank Odmetry 
     odometry_ = std::make_shared<Hardware::TankOdometry>(237.49f, 177.8f, 80.0f);
     encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
     encoder_driver_->initialize();
@@ -240,7 +240,6 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 
     // Tuning
     if (is_turning) kp = 2.0;
-    else if (is_strafing) kp = 1.0; 
     else kp = 0.6; 
 
     rclcpp::Rate loop_rate(50);
@@ -366,7 +365,7 @@ void ChassisNode::handle_encoder_tick(int gpio, int level) {
 }
 
 void ChassisNode::stop_motors() {
-    set_mecanum_power(0, 0, 0, 0);
+    set_tank_power0(0, 0);
 }
 
 // Action callbacks
