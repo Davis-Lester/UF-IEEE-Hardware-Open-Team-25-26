@@ -23,6 +23,7 @@ find_library(I2C_LIB i2c REQUIRED)
 # Create library for sensors
 add_library(sensor_lib SHARED 
     src/sensors/VEML7700.cpp 
+    src/sensors/UltrasonicDistance.cpp
     src/sensors/MPU6050.cpp
     src/odometry.cpp
     src/navigation_controller.cpp
@@ -36,7 +37,7 @@ target_include_directories(sensor_lib PUBLIC
 )
 ament_target_dependencies(sensor_lib rclcpp std_msgs sensor_msgs nav_msgs)
 
-target_link_libraries(sensor_lib ${I2C_LIB})
+target_link_libraries(sensor_lib ${I2C_LIB} ${PIGPIO_LIB})
 
 
 # define Drive action
@@ -49,25 +50,25 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
 
 add_executable(auton_node src/auton_routine.cpp)
-target_link_libraries(auton_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
+target_link_libraries(auton_node sensor_lib "${cpp_typesupport_target}")
 add_dependencies(auton_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(auton_node rclcpp rclcpp_action std_msgs)
 
 # Create nodes
-# Chassis Node needs to be fixed
-# add_executable(chassis_node src/chassis_node.cpp)
-# target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
-# add_dependencies(chassis_node ${PROJECT_NAME}__rosidl_generator_cpp)
-# ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs)
+#Chassis Node needs to be fixed
+add_executable(chassis_node src/chassis_node.cpp)
+target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
+add_dependencies(chassis_node ${PROJECT_NAME}__rosidl_generator_cpp)
+ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs)
 
 # IR Node
-add_executable(ir_node src/ir_node.cpp) # IR node likely doesn't need odometry/IMU
-target_link_libraries(ir_node ${PIGPIO_LIB})
+add_executable(ir_node src/ir_node.cpp) 
+target_link_libraries(ir_node sensor_lib)
 ament_target_dependencies(ir_node rclcpp std_msgs)
 
 #Camera Node
 add_executable(camera_node src/camera_node.cpp)
-target_link_libraries(camera_node sensor_lib ${PIGPIO_LIB} ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
+target_link_libraries(camera_node sensor_lib ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
 add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
 
@@ -80,13 +81,13 @@ target_link_libraries(keypad_servo_node sensor_lib ${PIGPIO_LIB})
 
 # Odometry test node
 add_executable(odom_test_node src/odometry_test.cpp)
-target_link_libraries(odom_test_node sensor_lib ${PIGPIO_LIB})
+target_link_libraries(odom_test_node sensor_lib)
 ament_target_dependencies(odom_test_node rclcpp std_msgs)
 
 install(TARGETS
   sensor_lib
   auton_node
-  #chassis_node
+  chassis_node
   odom_test_node
   camera_node
   ir_node
