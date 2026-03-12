@@ -149,7 +149,14 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     if (gpioInitialise() < 0) {
         RCLCPP_ERROR(this->get_logger(), "Pigpio Init Failed!");
     } else {
-        setup_motor_pins();
+        // setup_motor_pins(); Replaced with this 
+        motor_driver_ = std::make_shared<Hardware::PCA9685Driver>(1, 0x40);
+        if (!motor_driver_->initialize()) {
+            RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s", 
+                        motor_driver_->getLastError().c_str());
+        } else {
+            RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
+        }
         setup_encoders();
         
         // --- Setup Ultrasonic System ---
@@ -305,36 +312,25 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 
 // ========== Simplified tank drive control (4 wheels: 2 per side) ==========
 void ChassisNode::set_tank_power(double left, double right) {
-    auto write_motor = [](int pwm_pin, int in1, int in2, double speed) {
-        int pwm_val = std::clamp((int)speed, -255, 255);
-        if (pwm_val > 0) {
-            gpioWrite(in1, 1); gpioWrite(in2, 0);
-        } else if (pwm_val < 0) {
-            gpioWrite(in1, 0); gpioWrite(in2, 1);
-        } else {
-            gpioWrite(in1, 0); gpioWrite(in2, 0);
-        }
-        gpioPWM(pwm_pin, std::abs(pwm_val));
-    };
+    if (!motor_driver_) return;
     
-    // Left side: FL + RL
-    write_motor(PIN_FL_PWM, PIN_FL_IN1, PIN_FL_IN2, left);
-    write_motor(PIN_RL_PWM, PIN_RL_IN1, PIN_RL_IN2, left);
+    // Convert -255...255 to -100...100
+    int8_t left_pct = std::clamp(static_cast<int8_t>((left * 100.0) / 255.0), 
+                                 static_cast<int8_t>(-100), 
+                                 static_cast<int8_t>(100));
+    int8_t right_pct = std::clamp(static_cast<int8_t>((right * 100.0) / 255.0), 
+                                  static_cast<int8_t>(-100), 
+                                  static_cast<int8_t>(100));
     
-    // Right side: FR + RR
-    write_motor(PIN_FR_PWM, PIN_FR_IN1, PIN_FR_IN2, right);
-    write_motor(PIN_RR_PWM, PIN_RR_IN1, PIN_RR_IN2, right);
+    // Left side: M1 (FL) + M3 (RL)
+    motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_1, left_pct);
+    motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_3, left_pct);
+    
+    // Right side: M2 (FR) + M4 (RR)
+    motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_2, right_pct);
+    motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_4, right_pct);
 }
 
-void ChassisNode::setup_motor_pins() {
-    int outputs[] = {
-        PIN_FL_PWM, PIN_FL_IN1, PIN_FL_IN2,
-        PIN_FR_PWM, PIN_FR_IN1, PIN_FR_IN2,
-        PIN_RL_PWM, PIN_RL_IN1, PIN_RL_IN2,
-        PIN_RR_PWM, PIN_RR_IN1, PIN_RR_IN2
-    };
-    for (int p : outputs) gpioSetMode(p, PI_OUTPUT);
-}
 
 void ChassisNode::setup_encoders() {
     int inputs[] = {
@@ -368,7 +364,9 @@ void ChassisNode::handle_encoder_tick(int gpio, int level) {
 }
 
 void ChassisNode::stop_motors() {
-    set_tank_power(0, 0);
+    if (motor_driver_) {
+        motor_driver_->stopAll();
+    }
 }
 
 // Action callbacks
