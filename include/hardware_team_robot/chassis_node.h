@@ -9,11 +9,11 @@
 #include "hardware_team_robot/encoder_driver.h"
 #include "hardware_team_robot/sensors/UltrasonicDistance.h"
 #include "hardware_team_robot/sensors/VEML7700.h"  
+#include "hardware_team_robot/sensors/pca9685_driver.h"
 #include "std_msgs/msg/bool.hpp"
 #include <pigpio.h>
 #include <atomic>
 #include <thread> 
-
 
 
 class ChassisNode : public rclcpp::Node {
@@ -43,6 +43,10 @@ private:
     // ROS Action Server & IMU
     rclcpp_action::Server<Drive>::SharedPtr action_server_;
     MPU6050 imu_;
+
+    //Motor Driver
+    std::shared_ptr<Hardware::PCA9685Driver> motor_driver_;
+    std::atomic<bool> motor_ready_{false};
 
     // Threads for background processes
     std::thread odometry_thread_;  
@@ -79,7 +83,7 @@ private:
     void setup_encoders();
     
     // --- MOTORS (4 Wheels) ---
-    void setup_motor_pins();
+    //_motor_pins();
     // New: Individual control for mixing
     void set_tank_power(double left, double right); 
     void stop_motors();
@@ -101,11 +105,11 @@ private:
     static constexpr float KNOWN_LEFT_WALL_Y = 48.0f;
     static constexpr float KNOWN_RIGHT_WALL_Y = 0.0f;
 
-    // Motors (PWM, IN1, IN2)
-    static constexpr int PIN_FL_PWM = 12, PIN_FL_IN1 = 5,  PIN_FL_IN2 = 6;
-    static constexpr int PIN_FR_PWM = 13, PIN_FR_IN1 = 23, PIN_FR_IN2 = 24;
-    static constexpr int PIN_RL_PWM = 18, PIN_RL_IN1 = 25, PIN_RL_IN2 = 8;
-    static constexpr int PIN_RR_PWM = 19, PIN_RR_IN1 = 16, PIN_RR_IN2 = 20;
+    // Motors (PWM, IN1, IN2) I am commenting cause i dont think we need this
+    // static constexpr int PIN_FL_PWM = 12, PIN_FL_IN1 = 5,  PIN_FL_IN2 = 6;
+    // static constexpr int PIN_FR_PWM = 13, PIN_FR_IN1 = 23, PIN_FR_IN2 = 24;
+    // static constexpr int PIN_RL_PWM = 18, PIN_RL_IN1 = 25, PIN_RL_IN2 = 8;
+    // static constexpr int PIN_RR_PWM = 19, PIN_RR_IN1 = 16, PIN_RR_IN2 = 20;
 
     // Encoders (Channel A, Channel B)
     static constexpr int PIN_FL_ENC_A = 17, PIN_FL_ENC_B = 27;
