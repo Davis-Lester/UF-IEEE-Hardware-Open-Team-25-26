@@ -71,11 +71,11 @@ void ChassisNode::odometry_update_loop() {
             }
             // Always update timestamp to prevent dt accumulation on failure
             last_update = now;
-            }
+            
             
             // Update odometry with encoder data and IMU heading
             odometry_->update(fl, fr, rl, rr, heading_rad);
-
+        }
             // --- START LIGHT DETECTION  ---
             // Check for competition start light (ONE-TIME detection)
             // Runs at 100 Hz until detected, then stops checking
@@ -256,17 +256,15 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
         }
         
         if (is_turning) {
-            if (is_turning) {
-                float gx, gy, gz;
-                // Check IMU read success before using gyro data
-                if (imu_.readGyro(&gx, &gy, &gz) == 0) {
-                    current_val += (gz * dt);
-                    error = goal->target_value - current_val;
-                } else {
-                    // IMU read failed - skip integration, keep previous error
-                    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
-                                        "IMU read failed during turn");
-                }
+            float gx, gy, gz;
+            // Check IMU read success before using gyro data
+            if (imu_.readGyro(&gx, &gy, &gz) == 0) {
+                current_val += (gz * dt);
+                error = goal->target_value - current_val;
+            } else {
+                // IMU read failed - skip integration, keep previous error
+                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
+                                    "IMU read failed during turn");
             }
         } 
         else {

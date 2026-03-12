@@ -1,7 +1,6 @@
 #ifndef TANK_ODOMETRY_H
 #define TANK_ODOMETRY_H
 
-#include <atomic>
 #include <cstdint>
 #include <cmath>
 #include <mutex>
