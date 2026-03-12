@@ -51,8 +51,10 @@ void AutonRoutine::check_and_run() {
     }
 }
 
-// Updated to use the standardized 'target_value'
+// Updated to use the standardized 'target_value' and handle clean shutdowns
 bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double max_speed) {
+        if (!rclcpp::ok()) return false; // Immediate safety check
+
         auto goal_msg = Drive::Goal();
         goal_msg.mode = mode;
         goal_msg.target_value = target_value; 
@@ -66,8 +68,18 @@ bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
         auto send_goal_options = rclcpp_action::Client<Drive>::SendGoalOptions();
         auto goal_handle_future = this->client_ptr_->async_send_goal(goal_msg, send_goal_options);
         
-        // Block the worker thread until the main thread resolves the goal handle
-        if (goal_handle_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
+        // Block the worker thread in small chunks, checking rclcpp::ok()
+        auto timeout_time = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        std::future_status status;
+        do {
+            if (!rclcpp::ok()) {
+                RCLCPP_WARN(this->get_logger(), "Node shutting down, aborting wait for goal handle.");
+                return false;
+            }
+            status = goal_handle_future.wait_for(std::chrono::milliseconds(100));
+        } while (status != std::future_status::ready && std::chrono::steady_clock::now() < timeout_time);
+
+        if (status != std::future_status::ready) {
             RCLCPP_ERROR(this->get_logger(), "Timeout waiting for goal handle");
             return false;
         }
@@ -81,11 +93,21 @@ bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
 
         RCLCPP_INFO(this->get_logger(), "Executing %s...", mode.c_str());
         
-        // Block the worker thread until the main thread resolves the goal handle
-        if (result_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
+        // Block the worker thread in small chunks, checking rclcpp::ok()
+        timeout_time = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        do {
+            if (!rclcpp::ok()) {
+                RCLCPP_WARN(this->get_logger(), "Node shutting down, aborting wait for action result.");
+                return false;
+            }
+            status = result_future.wait_for(std::chrono::milliseconds(100));
+        } while (status != std::future_status::ready && std::chrono::steady_clock::now() < timeout_time);
+
+        if (status != std::future_status::ready) {
             RCLCPP_ERROR(this->get_logger(), "Timeout waiting for action result");
             return false;
         }
+
         // Inspect the actual result code to ensure the action didn't abort/cancel
         auto result = result_future.get();
         if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
@@ -98,7 +120,7 @@ bool AutonRoutine::wait_for_drive(std::string mode, double target_value, double 
 }
 
 void AutonRoutine::run_routine() {
-// Note: timer is already canceled in check_and_run
+    // Note: timer is already canceled in check_and_run
     RCLCPP_INFO(this->get_logger(), "--- STARTING AUTONOMOUS ---");
 
     // 1. Drive Forward
