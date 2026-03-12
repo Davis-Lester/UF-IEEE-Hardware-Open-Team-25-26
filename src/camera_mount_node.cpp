@@ -10,7 +10,7 @@ CameraMountNode::CameraMountNode()
   pigpio_ready_(false),
   cancel_motion_(false),
   current_time_pos_(0.0),
-  current_state_(STOWED)
+  current_state_(UNKNOWN)
 {
     cmd_sub_ = this->create_subscription<std_msgs::msg::String>(
         "/camera/mount_cmd",
@@ -49,6 +49,13 @@ void CameraMountNode::cmd_callback(const std_msgs::msg::String::SharedPtr msg)
     if(!pigpio_ready_)
     {
         RCLCPP_WARN(this->get_logger(),"Pigpio not initialized");
+        return;
+    }
+
+    if(current_state_ == UNKNOWN)
+    {
+        RCLCPP_WARN(this->get_logger(),
+            "Mount position unknown. Homing required.");
         return;
     }
 
