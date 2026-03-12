@@ -96,7 +96,10 @@ void CameraMountNode::move_to_time(float target_time)
 
     stop_motor();
 
+    if(!cancel_motion_)
+{
     current_time_pos_ = std::clamp(target_time, 0.0f, MAX_TRAVEL_TIME);
+}
 }
 
 void CameraMountNode::set_direction(bool up)
