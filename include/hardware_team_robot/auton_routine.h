@@ -19,6 +19,7 @@
 #include "hardware_team_robot/action/drive.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/u_int8.hpp"
+#include "std_msgs/msg/int8.hpp"
 #include <string>
 #include <atomic>
 #include <thread>
@@ -36,13 +37,19 @@ private:
     rclcpp_action::Client<Drive>::SharedPtr client_ptr_;
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr intake_pub_; // pubish to this to com w intake
 
+    std::atomic<int> current_intake_state_{0};
+    rclcpp::TimerBase::SharedPtr intake_publish_timer_;
+    void intake_publish_callback();
+    
     // Start Light Detection Subscriber
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
     std::atomic<bool> start_detected_{false};
 
     std::thread routine_thread_;
     
+    void set_intake(int state);
     // Routine Logic
     void run_routine();
     
