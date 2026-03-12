@@ -5,10 +5,6 @@
 IntakeNode::IntakeNode() : Node("intake_node") {
     RCLCPP_INFO(this->get_logger(), "Initializing Intake Node...");
 
-    // ==========================================
-    // 1. HARDWARE INITIALIZATION (pigpio)
-    // ==========================================
-    // Initialize the pigpio library. This requires root privileges!
     if (gpioInitialise() < 0) {
         RCLCPP_FATAL(this->get_logger(), "pigpio initialization failed! Are you running the node with sudo?");
         throw std::runtime_error("pigpio initialization failed");
@@ -21,9 +17,6 @@ IntakeNode::IntakeNode() : Node("intake_node") {
     // Safety: Ensure the motor is strictly off at startup
     stop_intake();
 
-    // ==========================================
-    // 2. ROS 2 INTERFACES
-    // ==========================================
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
         "/intake_cmd", 10,
         std::bind(&IntakeNode::intake_callback, this, std::placeholders::_1)
@@ -75,9 +68,6 @@ void IntakeNode::stop_intake() {
     gpioWrite(INTAKE_DIR_PIN, 0);
 }
 
-// ==========================================
-// MAIN EXECUTABLE ENTRY POINT
-// ==========================================
 int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
     
