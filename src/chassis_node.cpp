@@ -113,6 +113,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
         "/intake_cmd", intake_qos,
         std::bind(&ChassisNode::intake_callback, this, std::placeholders::_1));
+
     void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
         gpioPWM(RGB_PIN_RED,   static_cast<uint8_t>(msg->r));
         gpioPWM(RGB_PIN_GREEN, static_cast<uint8_t>(msg->g));

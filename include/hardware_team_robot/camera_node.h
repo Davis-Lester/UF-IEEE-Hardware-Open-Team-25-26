@@ -12,9 +12,11 @@
 #include "sensor_msgs/msg/image.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 #include "std_msgs/msg/bool.hpp"
+
 #include "cv_bridge/cv_bridge.hpp"
 #include "opencv2/opencv.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "std_msgs/msg/color_rgba.hpp"
 
 #include "hardware_team_robot/action/find_color.hpp"
 
@@ -30,8 +32,6 @@ struct ColorTargets {
 };
 
 class CameraProcessor : public rclcpp::Node {
-    // Publisher for RGB LED color control
-    rclcpp::Publisher<std_msgs::msg::ColorRGBA>::SharedPtr led_publisher_;
 public:
     using FindColor = hardware_team_robot::action::FindColor;
     using GoalHandleFindColor = rclcpp_action::ServerGoalHandle<FindColor>;
@@ -40,6 +40,8 @@ public:
     ~CameraProcessor();
 
 private:
+    // Publisher for RGB LED color control
+    rclcpp::Publisher<std_msgs::msg::ColorRGBA>::SharedPtr led_publisher_;
     // to time out if unresponsive
     rclcpp::Time start_time_;
     double timeout_seconds_ = 10.0; // 10 second limit
