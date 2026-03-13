@@ -19,7 +19,7 @@
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
 
-  <depend>pigpio</depend>
+  <depend>libpigpio-dev</depend>
   <depend>libi2c-dev</depend>
   
   <depend>cv_bridge</depend>
