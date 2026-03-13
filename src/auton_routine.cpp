@@ -168,7 +168,23 @@ void AutonRoutine::run_routine() {
     // Note: timer is already canceled in check_and_run
     RCLCPP_INFO(this->get_logger(), "--- STARTING AUTONOMOUS ---");
 
-    // Optional camera tilt action before drive
+    // Scope guard for reliable teardown (intake off + camera down) on all exits
+    struct RunScopeGuard {
+        AutonRoutine *self;
+        bool active;
+        RunScopeGuard(AutonRoutine *owner) : self(owner), active(true) {}
+        ~RunScopeGuard() {
+            if (!active) return;
+            self->set_intake(0);
+            if (self->camera_tilt_) {
+                RCLCPP_INFO(self->get_logger(), "Camera lift: moving down (scope guard)");
+                self->camera_tilt_->liftDown(CAMERA_LIFT_MOVEMENT_MS);
+            }
+            RCLCPP_INFO(self->get_logger(), "Auton routine cleanup complete (scope guard)");
+        }
+        void dismiss() { active = false; }
+    } guard(this);
+
     if (camera_tilt_) {
         RCLCPP_INFO(this->get_logger(), "Camera lift: moving up");
         camera_tilt_->liftUp(CAMERA_LIFT_MOVEMENT_MS);
@@ -193,27 +209,27 @@ void AutonRoutine::run_routine() {
     // 3. Turn 
     if (!wait_for_drive("TURN", 90.0)) {
         RCLCPP_ERROR(this->get_logger(), "Failed to turn. Aborting routine.");
-        set_intake(0); // Safety shutdown
         return;
     }
 
     // 4. Drive Backward
     if (!wait_for_drive("DRIVE", -1000.0)) {
         RCLCPP_ERROR(this->get_logger(), "Failed to drive backward. Aborting routine.");
-        set_intake(0); // Safety shutdown
         return;
     }
 
-    // Stop the intake (0 = stop) at the end of the routine
+    // Success path: keep the same safe state
     set_intake(0);
-
     if (camera_tilt_) {
         RCLCPP_INFO(this->get_logger(), "Camera lift: moving down");
         camera_tilt_->liftDown(CAMERA_LIFT_MOVEMENT_MS);
     }
 
+    guard.dismiss();
+
     RCLCPP_INFO(this->get_logger(), "--- AUTONOMOUS FINISHED ---");
 }
+
 
 int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);

@@ -55,7 +55,7 @@ private:
 #endif
 
     std::thread routine_thread_;
-    std::shared_ptr<Hardware::CameraTiltController> camera_tilt_; 
+    std::shared_ptr<Hardware::CameraLiftController> camera_lift_; 
     
     void set_intake(int state);
     // Routine Logic

@@ -93,7 +93,7 @@ private:
     // Encoders (Channel A, Channel B)
     // PINS UPDATED
     static constexpr int PIN_FL_ENC_A = 24, PIN_FL_ENC_B = 25;
-    static constexpr int PIN_FR_ENC_A = 28, PIN_FR_ENC_B = 7; 
+    static constexpr int PIN_FR_ENC_A = 8, PIN_FR_ENC_B = 7; 
     static constexpr int PIN_RL_ENC_A = 16, PIN_RL_ENC_B = 12;
     static constexpr int PIN_RR_ENC_A = 23,  PIN_RR_ENC_B = 18;
 
