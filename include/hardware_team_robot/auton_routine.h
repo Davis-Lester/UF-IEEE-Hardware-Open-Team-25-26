@@ -20,6 +20,7 @@
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 #include "std_msgs/msg/int8.hpp"
+#include "hardware_team_robot/camera_lift_node.h"
 #include <string>
 #include <atomic>
 #include <thread>
@@ -54,6 +55,7 @@ private:
 #endif
 
     std::thread routine_thread_;
+    std::shared_ptr<Hardware::CameraLiftController> camera_lift_; 
     
     void set_intake(int state);
     // Routine Logic

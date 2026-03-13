@@ -106,7 +106,7 @@ void CameraProcessor::image_callback(const sensor_msgs::msg::Image::SharedPtr ms
             int pixel_count = cv::countNonZero(combined_mask);
 
             if (pixel_count > 500) {
-// 1. Set the RGB LED color to match the detected color
+                // 1. Set the RGB LED color to match the detected color
                 if (target.name == "RED") {
                     setRGBColor(255, 0, 0);
                 } else if (target.name == "GREEN") {

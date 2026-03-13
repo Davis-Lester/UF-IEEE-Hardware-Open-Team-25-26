@@ -3,6 +3,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int8.hpp"
+#include "hardware_team_robot/sensors/pca9685_driver.h"
+#include <memory>
 
 class IntakeNode : public rclcpp::Node {
 public:
@@ -36,9 +38,11 @@ private:
     // - Encoders: 17, 27, 22, 4, 26, 21, 9, 11
 
     
-    // Selected safe pins for the intake motor driver (WILL NEED TO BE MODIFIED)
-    static constexpr int INTAKE_PWM_PIN = 12; 
-    static constexpr int INTAKE_DIR_PIN = 5;  
+    // PCA9685 channels for intake motor
+    static constexpr uint8_t INTAKE_PWM_CHANNEL_FWD = 2;
+    static constexpr uint8_t INTAKE_PWM_CHANNEL_REV = 3;
+
+    std::unique_ptr<Hardware::PCA9685Driver> pca_driver_; 
 };
 
 #endif // INTAKE_NODE_H

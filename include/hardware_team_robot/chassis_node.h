@@ -91,10 +91,11 @@ private:
     // static constexpr int PIN_RR_PWM = 19, PIN_RR_IN1 = 16, PIN_RR_IN2 = 20;
 
     // Encoders (Channel A, Channel B)
-    static constexpr int PIN_FL_ENC_A = 17, PIN_FL_ENC_B = 27;
-    static constexpr int PIN_FR_ENC_A = 22, PIN_FR_ENC_B = 4; 
-    static constexpr int PIN_RL_ENC_A = 26, PIN_RL_ENC_B = 21;
-    static constexpr int PIN_RR_ENC_A = 9,  PIN_RR_ENC_B = 11;
+    // PINS UPDATED
+    static constexpr int PIN_FL_ENC_A = 24, PIN_FL_ENC_B = 25;
+    static constexpr int PIN_FR_ENC_A = 8, PIN_FR_ENC_B = 7; 
+    static constexpr int PIN_RL_ENC_A = 16, PIN_RL_ENC_B = 12;
+    static constexpr int PIN_RR_ENC_A = 23,  PIN_RR_ENC_B = 18;
 
     // ==================== VEML7700 NOTES ====================
     // VEML7700 uses I2C Bus 1 (shared with MPU6050)
