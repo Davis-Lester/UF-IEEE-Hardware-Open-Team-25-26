@@ -49,6 +49,7 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
     start_light_detected_ = false;
     baseline_brightness_ = 0;
     start_light_initialized_ = false;
+    frame_count_ = 0;
 
     // Create the standalone timeout timer (checks every 200ms)
     timeout_timer_ = this->create_wall_timer(
@@ -109,11 +110,10 @@ void CameraProcessor::image_callback(const sensor_msgs::msg::Image::SharedPtr ms
             uint32_t current_brightness = static_cast<uint32_t>(mean_brightness[0]);
             
             // Initialize baseline on first few frames
-            static int frame_count = 0;
-            if (!start_light_initialized_ && frame_count < 10) {
-                baseline_brightness_ = (baseline_brightness_ * frame_count + current_brightness) / (frame_count + 1);
-                frame_count++;
-                if (frame_count >= 10) {
+            if (!start_light_initialized_ && frame_count_ < 10) {
+                baseline_brightness_ = (baseline_brightness_ * frame_count_ + current_brightness) / (frame_count_ + 1);
+                frame_count_++;
+                if (frame_count_ >= 10) {
                     start_light_initialized_ = true;
                     RCLCPP_INFO(this->get_logger(), "Start light baseline established: %d", baseline_brightness_);
                 }

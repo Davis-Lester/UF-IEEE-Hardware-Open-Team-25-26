@@ -106,9 +106,6 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     // REMOVED: VEML7700 Start Light Sensor initialization
     // Start light detection now handled by camera_node
     
-    //Initialize publisher BEFORE starting odometry thread
-    start_light_pub_ = this->create_publisher<std_msgs::msg::Bool>("/start_light_detected", 10);
-
     // Launch odometry update loop in a background thread
     odometry_thread_ = std::thread(&ChassisNode::odometry_update_loop, this);
 
@@ -210,6 +207,8 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
 
 // ========== Simplified tank drive control (4 wheels: 2 per side) ==========
 void ChassisNode::set_tank_power(double left, double right) {
+    std::lock_guard<std::mutex> lock(motor_mutex_);
+    
     if (!motor_driver_ || !motor_ready_) return;  // <-- ADD motor_ready_ check
     
     // Convert -255...255 to -100...100 safely
@@ -260,6 +259,7 @@ void ChassisNode::handle_encoder_tick(int gpio, int level) {
 }
 
 void ChassisNode::stop_motors() {
+    std::lock_guard<std::mutex> lock(motor_mutex_);
     if (motor_driver_) {
         motor_driver_->stopAll();
     }
@@ -271,7 +271,7 @@ void ChassisNode::motor_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr 
     float left_speed = static_cast<float>(msg->linear.x);
     float right_speed = static_cast<float>(msg->linear.y);
     
-    // Apply the motor commands
+    // Apply the motor commands (mutex protection is handled in set_tank_power)
     set_tank_power(static_cast<double>(left_speed), static_cast<double>(right_speed));
 }
 

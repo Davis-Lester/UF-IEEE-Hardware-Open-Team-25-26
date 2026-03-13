@@ -12,7 +12,8 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include <pigpio.h>
 #include <atomic>
-#include <thread> 
+#include <thread>
+#include <mutex> 
 
 class ChassisNode : public rclcpp::Node {
 public:
@@ -24,9 +25,6 @@ public:
     Hardware::TankOdometry::Pose getOdometryPose() const;
     // Reset odometry to origin
     void resetOdometry();
-
-    // Start Light Detection Interface
-    bool isStartLightDetected() const { return start_light_detected_; }
 
     ChassisNode();
     ~ChassisNode();
@@ -41,6 +39,7 @@ private:
     //Motor Driver
     std::shared_ptr<Hardware::PCA9685Driver> motor_driver_;
     std::atomic<bool> motor_ready_{false};
+    std::mutex motor_mutex_;  // Protects motor control operations
 
     // Threads for background processes
     std::thread odometry_thread_;  
@@ -50,12 +49,6 @@ private:
     std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
     std::shared_ptr<Hardware::TankOdometry> odometry_;
 
-    // VEML7700 light sensor for detecting start LED bar
-    // REMOVED: Start light detection now handled by camera_node
-    std::atomic<bool> start_light_detected_{false};
-    uint16_t baseline_white_{0};
-    bool start_light_disabled_{false};  //Flag to disable detection if sensor fails
-    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr start_light_pub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr motor_cmd_sub_;
 
     void odometry_update_loop();  // Continuously reads encoders and updates odometry

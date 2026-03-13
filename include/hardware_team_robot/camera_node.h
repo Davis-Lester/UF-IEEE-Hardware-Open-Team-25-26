@@ -73,6 +73,7 @@ private:
     bool start_light_detected_;
     uint32_t baseline_brightness_;
     bool start_light_initialized_;
+    int frame_count_;  // Counter for baseline establishment
 
     // RGB LED GPIO pins used for visual feedback
     // PINS UPDATED
