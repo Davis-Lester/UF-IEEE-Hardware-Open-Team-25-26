@@ -7,9 +7,9 @@
 #include "hardware_team_robot/sensors/MPU6050.h"
 #include "hardware_team_robot/tank_odometry.h"
 #include "hardware_team_robot/encoder_driver.h"
-#include "hardware_team_robot/sensors/VEML7700.h"  
 #include "hardware_team_robot/sensors/pca9685_driver.h"
 #include "std_msgs/msg/bool.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 #include <pigpio.h>
 #include <atomic>
 #include <thread> 
@@ -27,10 +27,6 @@ public:
 
     // Start Light Detection Interface
     bool isStartLightDetected() const { return start_light_detected_; }
-    // Motor Control Interface for NavigationController
-    void setTankSpeeds(float left_speed, float right_speed) {
-        set_tank_power(static_cast<double>(left_speed), static_cast<double>(right_speed));
-    }
 
     ChassisNode();
     ~ChassisNode();
@@ -55,11 +51,12 @@ private:
     std::shared_ptr<Hardware::TankOdometry> odometry_;
 
     // VEML7700 light sensor for detecting start LED bar
-    std::shared_ptr<VEML7700> start_light_sensor_;
+    // REMOVED: Start light detection now handled by camera_node
     std::atomic<bool> start_light_detected_{false};
     uint16_t baseline_white_{0};
     bool start_light_disabled_{false};  //Flag to disable detection if sensor fails
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr start_light_pub_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr motor_cmd_sub_;
 
     void odometry_update_loop();  // Continuously reads encoders and updates odometry
 
@@ -68,6 +65,7 @@ private:
     rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleDrive> goal_handle);
     void handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle);
     void execute(const std::shared_ptr<GoalHandleDrive> goal_handle);
+    void motor_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
 
     // --- ENCODERS (4 Wheels) ---
     // Atomic variables for thread-safe ISR access
@@ -96,12 +94,6 @@ private:
     static constexpr int PIN_FR_ENC_A = 8, PIN_FR_ENC_B = 7; 
     static constexpr int PIN_RL_ENC_A = 16, PIN_RL_ENC_B = 12;
     static constexpr int PIN_RR_ENC_A = 23,  PIN_RR_ENC_B = 18;
-
-    // ==================== VEML7700 NOTES ====================
-    // VEML7700 uses I2C Bus 1 (shared with MPU6050)
-    // Address: 0x10 (no GPIO pins needed)
-    // Purpose: ONE-TIME detection of competition start LED bars
-    // ========================================================
 };
 
 #endif // HARDWARE_TEAM_ROBOT_CHASSIS_NODE_H

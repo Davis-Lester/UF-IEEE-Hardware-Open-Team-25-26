@@ -44,11 +44,9 @@ void NavigationController::PIDController::reset() {
 }
 
 NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
-                                         std::shared_ptr<rclcpp::Node> rclcpp_node,
-                                         ChassisNode* chassis_interface)
+                                         std::shared_ptr<rclcpp::Node> rclcpp_node)
     : odometry_(odom), 
       node_(rclcpp_node), 
-      chassis_(chassis_interface),
       is_valid_(false) {
     
     // REQUIRED: Both node_ and odometry_ must be non-null for controller to function
@@ -63,11 +61,8 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
         return;
     }
     
-    // OPTIONAL: Chassis can be set later, but motors won't move without it
-    if (!chassis_) {
-        RCLCPP_WARN(node_->get_logger(), 
-            "[NavigationController] Chassis interface is null - motor commands will be no-ops");
-    }
+    // Create publisher for motor commands
+    motor_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("motor_cmd", 10);
     
     // Mark as valid only if required dependencies are present
     is_valid_ = true;
@@ -88,30 +83,23 @@ NavigationController::~NavigationController() {
     stop();
 }
 
-void NavigationController::setChassisInterface(ChassisNode* chassis_interface) {
-    chassis_ = chassis_interface;
-    if (node_) {
-        if (chassis_) {
-            RCLCPP_INFO(node_->get_logger(), "[NavigationController] Chassis interface connected");
-        } else {
-            RCLCPP_WARN(node_->get_logger(), "[NavigationController] Chassis interface disconnected");
-        }
-    }
-}
-
 void NavigationController::sendTankSpeeds(float left_speed, float right_speed) {
-    if (!chassis_) {
-        // Chassis not connected - this is expected during testing/setup
-        if (debug_logging_ && node_) {
-            RCLCPP_DEBUG(node_->get_logger(), 
-                "[NavigationController] No chassis - would send L=%.1f R=%.1f", 
-                left_speed, right_speed);
-        }
-        return;
-    }
+    // Publish motor command message
+    auto msg = geometry_msgs::msg::Twist();
+    msg.linear.x = left_speed;
+    msg.linear.y = right_speed;
+    msg.linear.z = 0.0;
+    msg.angular.x = 0.0;
+    msg.angular.y = 0.0;
+    msg.angular.z = 0.0;
     
-    // Send actual motor commands
-    chassis_->setTankSpeeds(left_speed, right_speed);
+    motor_cmd_pub_->publish(msg);
+    
+    if (debug_logging_ && node_) {
+        RCLCPP_DEBUG(node_->get_logger(), 
+            "[NavigationController] Published motor cmd: L=%.1f R=%.1f", 
+            left_speed, right_speed);
+    }
 }
 
 bool NavigationController::moveToPose(float target_x_inches, float target_y_inches,

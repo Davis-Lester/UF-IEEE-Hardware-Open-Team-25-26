@@ -3,6 +3,7 @@
 
 #include "hardware_team_robot/tank_odometry.h"
 #include "rclcpp/rclcpp.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 #include <memory>
 #include <cmath>
 #include <chrono>
@@ -18,8 +19,7 @@ public:
     // Constructor requires non-null odometry and ROS node
     // chassis_interface is optional but motors won't move without it
     NavigationController(std::shared_ptr<TankOdometry> odom,
-                         std::shared_ptr<rclcpp::Node> rclcpp_node,
-                         ChassisNode* chassis_interface = nullptr);
+                         std::shared_ptr<rclcpp::Node> rclcpp_node);
     
     ~NavigationController();
 
@@ -48,24 +48,11 @@ public:
                      float heading_ki,
                      float heading_kd);
     void setDebugLogging(bool enable);
-    
-    /*
-     * setChassisInterface - Set or update the chassis interface
-     * 
-     * @param chassis_interface Pointer to ChassisNode or nullptr
-     * 
-     * Lifetime contract: The ChassisNode* is stored as a raw pointer in chassis_
-     * and is NOT owned by NavigationController. Callers MUST ensure the chassis
-     * instance outlives this NavigationController or explicitly set to nullptr
-     * before chassis destruction. Passing nullptr is safe and will cause motor
-     * commands to become no-ops (useful for testing without hardware).
-     */
-    void setChassisInterface(ChassisNode* chassis_interface);
 
 private:
     std::shared_ptr<TankOdometry> odometry_;
     std::shared_ptr<rclcpp::Node> node_;
-    ChassisNode* chassis_;  // Raw pointer - lifetime managed externally
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr motor_cmd_pub_;
     bool is_valid_;         // True if node_ and odometry_ are non-null
     bool debug_logging_{false};
 

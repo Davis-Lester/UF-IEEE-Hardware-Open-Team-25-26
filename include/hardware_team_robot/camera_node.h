@@ -10,6 +10,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_msgs/msg/u_int8.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "cv_bridge/cv_bridge.hpp"
 #include "opencv2/opencv.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -61,11 +62,17 @@ private:
     // ROS Members
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subscription_;
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr start_light_publisher_;
     rclcpp_action::Server<FindColor>::SharedPtr action_server_;
 
     // State management
     std::shared_ptr<GoalHandleFindColor> active_goal_handle_;
     bool goal_active_;
+    
+    // Start light detection
+    bool start_light_detected_;
+    uint32_t baseline_brightness_;
+    bool start_light_initialized_;
 
     // RGB LED GPIO pins used for visual feedback
     // PINS UPDATED

@@ -68,25 +68,8 @@ void ChassisNode::odometry_update_loop() {
             odometry_->update(fl, fr, rl, rr, heading_rad);
         } 
         
-        // --- START LIGHT DETECTION  ---
-        // Check for competition start light (ONE-TIME detection)
-        // Runs at 100 Hz until detected, then stops checking
-        if (start_light_sensor_ && !start_light_detected_ && !start_light_disabled_) {
-            uint16_t white = 0;
-            
-            if (start_light_sensor_->readWhite(white)) { // Use new bool return API
-                // Use floating-point ratio to avoid overflow when baseline_white_ >= 32768
-                if (baseline_white_ > 0 && (static_cast<double>(white) / static_cast<double>(baseline_white_)) > 2.0) {
-                    start_light_detected_ = true;
-                    RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
-                                white, baseline_white_);
-                    
-                    auto msg = std_msgs::msg::Bool();
-                    msg.data = true;
-                    start_light_pub_->publish(msg);
-                }
-            }
-        }
+        // REMOVED: VEML7700 Start Light Detection
+        // Start light detection now handled by camera_node
         
         loop_rate.sleep();
     }
@@ -120,37 +103,8 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         imu_.calibrate(500); 
     }
 
-    // Initialize VEML7700 Start Light Sensor
-    start_light_sensor_ = std::make_shared<VEML7700>(1, 0x10);
-    if (start_light_sensor_->begin(VEML7700_ALS_GAIN_1_8, VEML7700_ALS_IT_25MS)) {
-        const int num_samples = 5;
-        uint32_t sum = 0;
-        int valid_samples = 0;
-        
-        for (int i = 0; i < num_samples; i++) {
-            usleep(30000);
-            uint16_t sample = 0;
-            
-            // FIXED: Use new bool return API
-            if (start_light_sensor_->readWhite(sample) && sample > 0) {
-                sum += sample;
-                valid_samples++;
-            }
-        }
-        
-        if (valid_samples > 0) {
-            baseline_white_ = sum / valid_samples;
-            RCLCPP_INFO(this->get_logger(), "Start Light Sensor Ready. Baseline WHITE: %d counts (%d/%d samples)", 
-                        baseline_white_, valid_samples, num_samples);
-        } else {
-            start_light_disabled_ = true;
-            RCLCPP_WARN(this->get_logger(), "Start Light Sensor baseline failed - detection DISABLED");
-        }
-    } else {
-        start_light_disabled_ = true;
-        RCLCPP_ERROR(this->get_logger(), "Start Light Sensor Init Failed! %s", 
-                     start_light_sensor_->getLastError().c_str());
-    }
+    // REMOVED: VEML7700 Start Light Sensor initialization
+    // Start light detection now handled by camera_node
     
     //Initialize publisher BEFORE starting odometry thread
     start_light_pub_ = this->create_publisher<std_msgs::msg::Bool>("/start_light_detected", 10);
@@ -163,6 +117,11 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         std::bind(&ChassisNode::handle_goal, this, std::placeholders::_1, std::placeholders::_2),
         std::bind(&ChassisNode::handle_cancel, this, std::placeholders::_1),
         std::bind(&ChassisNode::handle_accepted, this, std::placeholders::_1));
+
+    // Subscribe to motor commands from NavigationController
+    motor_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+        "motor_cmd", 10,
+        std::bind(&ChassisNode::motor_cmd_callback, this, std::placeholders::_1));
 }
 
 void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
@@ -304,6 +263,16 @@ void ChassisNode::stop_motors() {
     if (motor_driver_) {
         motor_driver_->stopAll();
     }
+}
+
+void ChassisNode::motor_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
+    // Extract left and right motor speeds from Twist message
+    // Convention: linear.x = left speed, linear.y = right speed
+    float left_speed = static_cast<float>(msg->linear.x);
+    float right_speed = static_cast<float>(msg->linear.y);
+    
+    // Apply the motor commands
+    set_tank_power(static_cast<double>(left_speed), static_cast<double>(right_speed));
 }
 
 // Action callbacks

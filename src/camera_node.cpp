@@ -15,8 +15,11 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
 
     // 1. Publisher to the IR Node
     ir_publisher_ = this->create_publisher<std_msgs::msg::UInt8>("ir_command", 10);
+    
+    // 2. Publisher for start light detection
+    start_light_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/start_light_detected", 10);
 
-    // 2. Action Server for Auton Routine
+    // 3. Action Server for Auton Routine
     action_server_ = rclcpp_action::create_server<FindColor>(
         this, "find_color_action",
         std::bind(&CameraProcessor::handle_goal, this, std::placeholders::_1, std::placeholders::_2),
@@ -41,6 +44,11 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
     };
 
     goal_active_ = false;
+
+    // Initialize start light detection
+    start_light_detected_ = false;
+    baseline_brightness_ = 0;
+    start_light_initialized_ = false;
 
     // Create the standalone timeout timer (checks every 200ms)
     timeout_timer_ = this->create_wall_timer(
@@ -85,11 +93,45 @@ void CameraProcessor::clearRGBColor() {
 }
 
 void CameraProcessor::image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
-    if (!goal_active_) return; // Only process if Auton asked for it
-        
-    try{
-
+    try {
         auto cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+        
+        // --- START LIGHT DETECTION ---
+        // Check for competition start light (bright white light)
+        // This runs continuously regardless of goal state
+        if (!start_light_detected_) {
+            // Convert to grayscale for brightness detection
+            cv::Mat gray_frame;
+            cv::cvtColor(cv_ptr->image, gray_frame, cv::COLOR_BGR2GRAY);
+            
+            // Calculate average brightness
+            cv::Scalar mean_brightness = cv::mean(gray_frame);
+            uint32_t current_brightness = static_cast<uint32_t>(mean_brightness[0]);
+            
+            // Initialize baseline on first few frames
+            static int frame_count = 0;
+            if (!start_light_initialized_ && frame_count < 10) {
+                baseline_brightness_ = (baseline_brightness_ * frame_count + current_brightness) / (frame_count + 1);
+                frame_count++;
+                if (frame_count >= 10) {
+                    start_light_initialized_ = true;
+                    RCLCPP_INFO(this->get_logger(), "Start light baseline established: %d", baseline_brightness_);
+                }
+            }
+            // Check for start light if baseline is established
+            else if (start_light_initialized_ && current_brightness > baseline_brightness_ * 2.5) {
+                start_light_detected_ = true;
+                RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (Brightness: %d, Baseline: %d)", 
+                           current_brightness, baseline_brightness_);
+                
+                auto start_msg = std_msgs::msg::Bool();
+                start_msg.data = true;
+                start_light_publisher_->publish(start_msg);
+            }
+        }
+        
+        // Only process color detection if Auton asked for it
+        if (!goal_active_) return;
         cv::Mat hsv_frame;
         cv::cvtColor(cv_ptr->image, hsv_frame, cv::COLOR_BGR2HSV);
 
