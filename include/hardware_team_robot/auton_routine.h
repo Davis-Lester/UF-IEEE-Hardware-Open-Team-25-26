@@ -15,6 +15,7 @@
 //╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╰━━╯
 
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp/qos.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "hardware_team_robot/action/drive.hpp"
 #include "std_msgs/msg/bool.hpp"

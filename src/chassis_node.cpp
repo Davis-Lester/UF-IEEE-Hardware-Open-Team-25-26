@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 #include <thread>
-#include <pigpio.h>
+
 
 // ISR Wrapper
 static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
@@ -28,10 +28,11 @@ void ChassisNode::resetOdometry() {
     }
 }
 
-ChassisNode::~ChassisNode() {  
-    if (odometry_thread_.joinable()) odometry_thread_.join();  
-    if (execute_thread_.joinable()) execute_thread_.join();  
-} 
+ChassisNode::~ChassisNode() {
+    if (odometry_thread_.joinable()) odometry_thread_.join();
+    if (execute_thread_.joinable()) execute_thread_.join();
+    gpioTerminate();
+}
 
 void ChassisNode::odometry_update_loop() {
     rclcpp::Rate loop_rate(100);  // 100 Hz update rate
@@ -68,51 +69,65 @@ void ChassisNode::odometry_update_loop() {
             odometry_->update(fl, fr, rl, rr, heading_rad);
         } 
         
-        // --- START LIGHT DETECTION  ---
-        // Check for competition start light (ONE-TIME detection)
-        // Runs at 100 Hz until detected, then stops checking
-        if (start_light_sensor_ && !start_light_detected_ && !start_light_disabled_) {
-            uint16_t white = 0;
-            
-            if (start_light_sensor_->readWhite(white)) { // Use new bool return API
-                // Use floating-point ratio to avoid overflow when baseline_white_ >= 32768
-                if (baseline_white_ > 0 && (static_cast<double>(white) / static_cast<double>(baseline_white_)) > 2.0) {
-                    start_light_detected_ = true;
-                    RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (WHITE: %d, Baseline: %d)", 
-                                white, baseline_white_);
-                    
-                    auto msg = std_msgs::msg::Bool();
-                    msg.data = true;
-                    start_light_pub_->publish(msg);
-                }
-            }
-        }
+        // REMOVED: VEML7700 Start Light Detection
+        // Start light detection now handled by camera_node
         
         loop_rate.sleep();
     }
 }
 
+
 ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
-    if (gpioInitialise() < 0) {
-        RCLCPP_ERROR(this->get_logger(), "Pigpio Init Failed!");
+    motor_driver_ = std::make_shared<Hardware::PCA9685Driver>(1, 0x40);
+    if (!motor_driver_->initialize()) {
+        RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s", 
+                    motor_driver_->getLastError().c_str());
+        motor_driver_.reset();
     } else {
-        // setup_motor_pins(); Replaced with this 
-        motor_driver_ = std::make_shared<Hardware::PCA9685Driver>(1, 0x40);
-        if (!motor_driver_->initialize()) {
-            RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s", 
-                        motor_driver_->getLastError().c_str());
-            motor_driver_.reset();  // To prevent using failed driver
-        } else {
-            RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
-            motor_ready_ = true; 
-        }
+        RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready");
+        motor_ready_ = true;
     }
 
-    // Default chassis dimensions for Tank Odmetry 
-    // (wheel diameter, horizontal distance, vertical distance)
     odometry_ = std::make_shared<Hardware::TankOdometry>(80.0f, 237.49f, 177.8f);
     encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
-    encoder_driver_->initialize();
+    if (encoder_driver_->initialize()) {
+        setup_encoders();
+        RCLCPP_INFO(this->get_logger(), "Encoders initialized");
+        // RGB LED GPIO setup
+        gpioSetMode(RGB_PIN_RED, PI_OUTPUT);
+        gpioSetMode(RGB_PIN_GREEN, PI_OUTPUT);
+        gpioSetMode(RGB_PIN_BLUE, PI_OUTPUT);
+        gpioPWM(RGB_PIN_RED, 0);
+        gpioPWM(RGB_PIN_GREEN, 0);
+        gpioPWM(RGB_PIN_BLUE, 0);
+    }
+
+    // /led_cmd subscriber
+    led_sub_ = this->create_subscription<std_msgs::msg::ColorRGBA>(
+        "/led_cmd", 10,
+        std::bind(&ChassisNode::led_callback, this, std::placeholders::_1));
+
+    // /intake_cmd subscriber
+    rclcpp::QoS intake_qos(10);
+    intake_qos.reliable();
+    intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
+        "/intake_cmd", intake_qos,
+        std::bind(&ChassisNode::intake_callback, this, std::placeholders::_1));
+
+    void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
+        auto to_pwm = [](float c) -> uint8_t {
+            return static_cast<uint8_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f);
+        };
+        gpioPWM(RGB_PIN_RED,   to_pwm(msg->r));
+        gpioPWM(RGB_PIN_GREEN, to_pwm(msg->g));
+        gpioPWM(RGB_PIN_BLUE,  to_pwm(msg->b));
+    }
+
+    void ChassisNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
+        if (!motor_driver_ || !motor_ready_) return;
+        motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_5,
+            msg->data > 0 ? 75 : msg->data < 0 ? -75 : 0);
+    }
     
     //Init IMU
     if (imu_.initialize() == 0) {
@@ -120,41 +135,9 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         imu_.calibrate(500); 
     }
 
-    // Initialize VEML7700 Start Light Sensor
-    start_light_sensor_ = std::make_shared<VEML7700>(1, 0x10);
-    if (start_light_sensor_->begin(VEML7700_ALS_GAIN_1_8, VEML7700_ALS_IT_25MS)) {
-        const int num_samples = 5;
-        uint32_t sum = 0;
-        int valid_samples = 0;
-        
-        for (int i = 0; i < num_samples; i++) {
-            usleep(30000);
-            uint16_t sample = 0;
-            
-            // FIXED: Use new bool return API
-            if (start_light_sensor_->readWhite(sample) && sample > 0) {
-                sum += sample;
-                valid_samples++;
-            }
-        }
-        
-        if (valid_samples > 0) {
-            baseline_white_ = sum / valid_samples;
-            RCLCPP_INFO(this->get_logger(), "Start Light Sensor Ready. Baseline WHITE: %d counts (%d/%d samples)", 
-                        baseline_white_, valid_samples, num_samples);
-        } else {
-            start_light_disabled_ = true;
-            RCLCPP_WARN(this->get_logger(), "Start Light Sensor baseline failed - detection DISABLED");
-        }
-    } else {
-        start_light_disabled_ = true;
-        RCLCPP_ERROR(this->get_logger(), "Start Light Sensor Init Failed! %s", 
-                     start_light_sensor_->getLastError().c_str());
-    }
+    // REMOVED: VEML7700 Start Light Sensor initialization
+    // Start light detection now handled by camera_node
     
-    //Initialize publisher BEFORE starting odometry thread
-    start_light_pub_ = this->create_publisher<std_msgs::msg::Bool>("/start_light_detected", 10);
-
     // Launch odometry update loop in a background thread
     odometry_thread_ = std::thread(&ChassisNode::odometry_update_loop, this);
 
@@ -163,9 +146,15 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         std::bind(&ChassisNode::handle_goal, this, std::placeholders::_1, std::placeholders::_2),
         std::bind(&ChassisNode::handle_cancel, this, std::placeholders::_1),
         std::bind(&ChassisNode::handle_accepted, this, std::placeholders::_1));
+
+    // Subscribe to motor commands from NavigationController
+    motor_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+        "motor_cmd", rclcpp::QoS(10).reliable(),
+        std::bind(&ChassisNode::motor_cmd_callback, this, std::placeholders::_1));
 }
 
 void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
+    action_active_ = true;  // Indicate action is active
     const auto goal = goal_handle->get_goal();
     auto result = std::make_shared<Drive::Result>();
     auto feedback = std::make_shared<Drive::Feedback>();
@@ -192,6 +181,7 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
     while (rclcpp::ok()) {
         if (goal_handle->is_canceling()) {
             stop_motors();
+            action_active_ = false;
             goal_handle->canceled(result);
             return;
         }
@@ -246,11 +236,14 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
     
     stop_motors();
     result->success = true;
+    action_active_ = false;
     goal_handle->succeed(result);
 }  
 
 // ========== Simplified tank drive control (4 wheels: 2 per side) ==========
 void ChassisNode::set_tank_power(double left, double right) {
+    std::lock_guard<std::mutex> lock(motor_mutex_);
+    
     if (!motor_driver_ || !motor_ready_) return;  // <-- ADD motor_ready_ check
     
     // Convert -255...255 to -100...100 safely
@@ -301,9 +294,33 @@ void ChassisNode::handle_encoder_tick(int gpio, int level) {
 }
 
 void ChassisNode::stop_motors() {
+    std::lock_guard<std::mutex> lock(motor_mutex_);
     if (motor_driver_) {
         motor_driver_->stopAll();
     }
+}
+
+void ChassisNode::motor_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
+    // Ignore commands if an action is actively controlling motors
+    if (action_active_) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                            "Ignoring motor command from topic while action is active");
+        return;
+    }
+
+    // Extract left and right motor speeds from Twist message
+    // Convention: linear.x = left speed, linear.y = right speed
+    float left_speed = static_cast<float>(msg->linear.x);
+    float right_speed = static_cast<float>(msg->linear.y);
+    
+    // Validate inputs: check for finite values
+    if (!std::isfinite(left_speed) || !std::isfinite(right_speed)) {
+        RCLCPP_WARN(this->get_logger(), "Received non-finite motor speeds: left=%f, right=%f", left_speed, right_speed);
+        return;
+    }
+    
+    // Apply the motor commands (mutex protection is handled in set_tank_power)
+    set_tank_power(static_cast<double>(left_speed), static_cast<double>(right_speed));
 }
 
 // Action callbacks

@@ -44,11 +44,9 @@ void NavigationController::PIDController::reset() {
 }
 
 NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
-                                         std::shared_ptr<rclcpp::Node> rclcpp_node,
-                                         ChassisNode* chassis_interface)
+                                         std::shared_ptr<rclcpp::Node> rclcpp_node)
     : odometry_(odom), 
       node_(rclcpp_node), 
-      chassis_(chassis_interface),
       is_valid_(false) {
     
     // REQUIRED: Both node_ and odometry_ must be non-null for controller to function
@@ -63,14 +61,25 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
         return;
     }
     
-    // OPTIONAL: Chassis can be set later, but motors won't move without it
-    if (!chassis_) {
-        RCLCPP_WARN(node_->get_logger(), 
-            "[NavigationController] Chassis interface is null - motor commands will be no-ops");
-    }
-    
-    // Mark as valid only if required dependencies are present
-    is_valid_ = true;
+    // Create publisher for motor commands with volatile durability and reliable reliability
+    rclcpp::PublisherOptions pub_options;
+    pub_options.event_callbacks.publication_matched_callback =
+        [this](const rclcpp::QOSPublicationMatchedInfo & info) {
+            if (info.current_count > 0) {
+                is_valid_ = true;
+            } else {
+                is_valid_ = false;
+            }
+        };
+    pub_options.event_callbacks.incompatible_qos_callback =
+        [this](rclcpp::QOSOfferedIncompatibleQoSInfo & info) {
+            is_valid_ = false;
+            if (node_) {
+                RCLCPP_ERROR(node_->get_logger(), "[NavigationController] Incompatible QoS detected for motor_cmd publisher!");
+            }
+        };
+    motor_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(
+        "motor_cmd", rclcpp::QoS(10).reliable(), pub_options);
     
     // Initialize PID controllers with reasonable defaults for tank drive
     distance_pid_.kp = 0.5f;
@@ -88,30 +97,27 @@ NavigationController::~NavigationController() {
     stop();
 }
 
-void NavigationController::setChassisInterface(ChassisNode* chassis_interface) {
-    chassis_ = chassis_interface;
-    if (node_) {
-        if (chassis_) {
-            RCLCPP_INFO(node_->get_logger(), "[NavigationController] Chassis interface connected");
-        } else {
-            RCLCPP_WARN(node_->get_logger(), "[NavigationController] Chassis interface disconnected");
-        }
-    }
-}
-
 void NavigationController::sendTankSpeeds(float left_speed, float right_speed) {
-    if (!chassis_) {
-        // Chassis not connected - this is expected during testing/setup
-        if (debug_logging_ && node_) {
-            RCLCPP_DEBUG(node_->get_logger(), 
-                "[NavigationController] No chassis - would send L=%.1f R=%.1f", 
-                left_speed, right_speed);
+    // Publish motor command message
+    if (!motor_cmd_pub_) {
+        if (node_) {
+            RCLCPP_ERROR(node_->get_logger(), "[NavigationController] motor_cmd_pub_ is null! Cannot publish motor command.");
         }
         return;
     }
-    
-    // Send actual motor commands
-    chassis_->setTankSpeeds(left_speed, right_speed);
+    auto msg = geometry_msgs::msg::Twist();
+    msg.linear.x = left_speed;
+    msg.linear.y = right_speed;
+    msg.linear.z = 0.0;
+    msg.angular.x = 0.0;
+    msg.angular.y = 0.0;
+    msg.angular.z = 0.0;
+    motor_cmd_pub_->publish(msg);
+    if (debug_logging_ && node_) {
+        RCLCPP_DEBUG(node_->get_logger(), 
+            "[NavigationController] Published motor cmd: L=%.1f R=%.1f", 
+            left_speed, right_speed);
+    }
 }
 
 bool NavigationController::moveToPose(float target_x_inches, float target_y_inches,

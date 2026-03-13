@@ -12,6 +12,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -28,7 +29,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
 # Create library for sensors
 add_library(sensor_lib SHARED 
-    src/sensors/VEML7700.cpp 
     src/sensors/MPU6050.cpp
     src/odometry.cpp
     src/navigation_controller.cpp
@@ -42,7 +42,7 @@ target_include_directories(sensor_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp>
   $<INSTALL_INTERFACE:include>
 )
-ament_target_dependencies(sensor_lib rclcpp rclcpp_action std_msgs sensor_msgs nav_msgs)
+ament_target_dependencies(sensor_lib rclcpp rclcpp_action std_msgs sensor_msgs nav_msgs geometry_msgs)
 add_dependencies(sensor_lib ${PROJECT_NAME}__rosidl_generator_cpp)
 target_link_libraries(sensor_lib ${I2C_LIB} ${PIGPIO_LIB})
 
@@ -53,13 +53,13 @@ add_dependencies(sensor_lib ${cpp_typesupport_target})
 add_executable(auton_node src/auton_routine.cpp)
 target_link_libraries(auton_node sensor_lib "${cpp_typesupport_target}")
 add_dependencies(auton_node ${PROJECT_NAME}__rosidl_generator_cpp)
-ament_target_dependencies(auton_node rclcpp rclcpp_action std_msgs)
+ament_target_dependencies(auton_node rclcpp rclcpp_action std_msgs geometry_msgs)
 
 #Chassis Node needs to be fixed
 add_executable(chassis_node src/chassis_node.cpp)
 target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
 add_dependencies(chassis_node ${PROJECT_NAME}__rosidl_generator_cpp)
-ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs)
+ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs geometry_msgs)
 
 #Camera Node
 add_executable(camera_node src/camera_node.cpp)
@@ -68,8 +68,9 @@ add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
 
 # Intake Control Node
+
+# Intake Control Node (no pigpio or PCA9685 dependencies)
 add_executable(intake_node src/intake_node.cpp)
-target_link_libraries(intake_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
 add_dependencies(intake_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(intake_node rclcpp std_msgs)
 
