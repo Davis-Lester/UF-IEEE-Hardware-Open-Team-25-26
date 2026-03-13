@@ -28,12 +28,6 @@ void ChassisNode::resetOdometry() {
     }
 }
 
-float ChassisNode::calculate_y_from_wall(const Hardware::TankOdometry::Pose& current_pose, 
-                                         float sensor_distance, float offset_x, float offset_y, float known_wall_y) {
-    float theta = current_pose.theta_rad;
-    return known_wall_y - (offset_x * std::sin(theta)) - ((offset_y + sensor_distance) * std::cos(theta));
-}
-
 ChassisNode::~ChassisNode() {  
     if (odometry_thread_.joinable()) odometry_thread_.join();  
     if (execute_thread_.joinable()) execute_thread_.join();  
@@ -45,7 +39,6 @@ void ChassisNode::odometry_update_loop() {
     // Track heading by integrating gyro
     float heading_rad = 0.0f;
     auto last_update = std::chrono::high_resolution_clock::now();
-    int ultrasonic_counter = 0;
     
     while (rclcpp::ok()) {
         if (encoder_driver_ && odometry_) {
@@ -71,55 +64,9 @@ void ChassisNode::odometry_update_loop() {
             // Always update timestamp to prevent dt accumulation on failure
             last_update = now;
             
-            
             // Update odometry with encoder data and IMU heading
             odometry_->update(fl, fr, rl, rr, heading_rad);
-            
-            // --- Ultrasonic Correction Block (Runs at 10Hz) ---
-            ultrasonic_counter++;
-            if (ultrasonic_counter >= 10 && ultrasonic_driver_) { 
-                ultrasonic_counter = 0;
-                float left_dist = ultrasonic_driver_->getLeftDistance();
-                float right_dist = ultrasonic_driver_->getRightDistance();
-                
-                bool left_valid = (left_dist > 0.0f && left_dist < 24.0f);
-                bool right_valid = (right_dist > 0.0f && right_dist < 24.0f);
-                if (left_valid || right_valid) {
-                    Hardware::TankOdometry::Pose current_pose = odometry_->getCurrentPose();
-                    float new_y = current_pose.y_inches;
-                    bool update_needed = false;
-                    // Calculate proposed Y coordinates
-                    if (left_valid && right_valid) {
-                        float y_left = calculate_y_from_wall(current_pose, left_dist, US_LEFT_OFFSET_X, US_LEFT_OFFSET_Y, KNOWN_LEFT_WALL_Y);
-                        float y_right = calculate_y_from_wall(current_pose, -right_dist, US_RIGHT_OFFSET_X, US_RIGHT_OFFSET_Y, KNOWN_RIGHT_WALL_Y);
-                        
-                        // FUSION: Average the two valid readings
-                        new_y = (y_left + y_right) / 2.0f;
-                        update_needed = true;
-                    } 
-                    else if (left_valid) {
-                        new_y = calculate_y_from_wall(current_pose, left_dist, US_LEFT_OFFSET_X, US_LEFT_OFFSET_Y, KNOWN_LEFT_WALL_Y);
-                        update_needed = true;
-                    } 
-                    else if (right_valid) {
-                        new_y = calculate_y_from_wall(current_pose, -right_dist, US_RIGHT_OFFSET_X, US_RIGHT_OFFSET_Y, KNOWN_RIGHT_WALL_Y);
-                        update_needed = true;
-                    }
-                    // Apply the update once
-                    if (update_needed) {
-                        float error = std::abs(current_pose.y_inches - new_y);
-                        if (error < 12.0f) { 
-                            odometry_->setPose(current_pose.x_inches, new_y, current_pose.theta_rad);
-                        } else {
-                            RCLCPP_WARN(this->get_logger(), "Odom Correction Ignored (Jump too large). Est Y: %.2f | Calc Y: %.2f",
-                                        current_pose.y_inches, new_y);
-                        }
-                    }
-                }
-                // Ping the sensors for the next cycle
-                ultrasonic_driver_->trigger();
-            }
-        } // <-- MOVED: Closing brace now protects ultrasonic block
+        } 
         
         // --- START LIGHT DETECTION  ---
         // Check for competition start light (ONE-TIME detection)
@@ -159,22 +106,14 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
             RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
             motor_ready_ = true; 
         }
-        
-        // --- Setup Ultrasonic System ---
-        Hardware::UltrasonicDriver::Config left_us_cfg{PIN_US_LEFT_TRIG, PIN_US_LEFT_ECHO};
-        Hardware::UltrasonicDriver::Config right_us_cfg{PIN_US_RIGHT_TRIG, PIN_US_RIGHT_ECHO};
-        
-        ultrasonic_driver_ = std::make_shared<Hardware::UltrasonicDriver>(left_us_cfg, right_us_cfg);
-        if (!ultrasonic_driver_->initialize()) {
-            RCLCPP_ERROR(this->get_logger(), "Ultrasonic Init Failed!");
-            ultrasonic_driver_.reset(); // Prevent odometry loop from using uninitialized ultrasonic driver
-        }
     }
 
     // Default chassis dimensions for Tank Odmetry 
-    odometry_ = std::make_shared<Hardware::TankOdometry>(237.49f, 177.8f, 80.0f);
+    // (wheel diameter, horizontal distance, vertical distance)
+    odometry_ = std::make_shared<Hardware::TankOdometry>(80.0f, 237.49f, 177.8f);
     encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
     encoder_driver_->initialize();
+    
     //Init IMU
     if (imu_.initialize() == 0) {
         RCLCPP_INFO(this->get_logger(), "IMU Calibrating...");
@@ -215,7 +154,6 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     
     //Initialize publisher BEFORE starting odometry thread
     start_light_pub_ = this->create_publisher<std_msgs::msg::Bool>("/start_light_detected", 10);
-
 
     // Launch odometry update loop in a background thread
     odometry_thread_ = std::thread(&ChassisNode::odometry_update_loop, this);
@@ -330,7 +268,6 @@ void ChassisNode::set_tank_power(double left, double right) {
     motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_2, right_pct);
     motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_4, right_pct);
 }
-
 
 void ChassisNode::setup_encoders() {
     int inputs[] = {

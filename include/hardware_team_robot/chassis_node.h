@@ -7,14 +7,12 @@
 #include "hardware_team_robot/sensors/MPU6050.h"
 #include "hardware_team_robot/tank_odometry.h"
 #include "hardware_team_robot/encoder_driver.h"
-#include "hardware_team_robot/sensors/UltrasonicDistance.h"
 #include "hardware_team_robot/sensors/VEML7700.h"  
 #include "hardware_team_robot/sensors/pca9685_driver.h"
 #include "std_msgs/msg/bool.hpp"
 #include <pigpio.h>
 #include <atomic>
 #include <thread> 
-
 
 class ChassisNode : public rclcpp::Node {
 public:
@@ -55,9 +53,6 @@ private:
     // Hardware abstraction for encoder and odometry 
     std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
     std::shared_ptr<Hardware::TankOdometry> odometry_;
-    
-    // Hardware abstraction for ultrasonic sensors
-    std::shared_ptr<Hardware::UltrasonicDriver> ultrasonic_driver_;
 
     // VEML7700 light sensor for detecting start LED bar
     std::shared_ptr<VEML7700> start_light_sensor_;
@@ -68,8 +63,7 @@ private:
 
     void odometry_update_loop();  // Continuously reads encoders and updates odometry
 
-    // --- Ultrasonic Odometry Correction ---
-    float calculate_y_from_wall(const Hardware::TankOdometry::Pose& current_pose, float sensor_distance, float offset_x, float offset_y, float known_wall_y);    // Callbacks
+    // Callbacks
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const Drive::Goal> goal);
     rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleDrive> goal_handle);
     void handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle);
@@ -89,22 +83,7 @@ private:
     void stop_motors();
 
     // --- PIN DEFINITIONS & CONSTANTS ---
-    // Ultrasonic Pins
-    static constexpr int PIN_US_LEFT_TRIG = 7;
-    static constexpr int PIN_US_LEFT_ECHO = 10;
-    static constexpr int PIN_US_RIGHT_TRIG = 14;
-    static constexpr int PIN_US_RIGHT_ECHO = 15;
-
-    // Ultrasonic Sensor Displacements (Inches)
-    static constexpr float US_LEFT_OFFSET_X = 0.0f;
-    static constexpr float US_LEFT_OFFSET_Y = 4.5f;
-    static constexpr float US_RIGHT_OFFSET_X = 0.0f;
-    static constexpr float US_RIGHT_OFFSET_Y = -4.5f;
-
-    // Known Arena Boundaries (Inches)
-    static constexpr float KNOWN_LEFT_WALL_Y = 48.0f;
-    static constexpr float KNOWN_RIGHT_WALL_Y = 0.0f;
-
+    
     // Motors (PWM, IN1, IN2) I am commenting cause i dont think we need this
     // static constexpr int PIN_FL_PWM = 12, PIN_FL_IN1 = 5,  PIN_FL_IN2 = 6;
     // static constexpr int PIN_FR_PWM = 13, PIN_FR_IN1 = 23, PIN_FR_IN2 = 24;
