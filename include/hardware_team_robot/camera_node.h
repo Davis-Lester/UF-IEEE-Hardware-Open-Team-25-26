@@ -30,6 +30,8 @@ struct ColorTargets {
 };
 
 class CameraProcessor : public rclcpp::Node {
+    // Publisher for RGB LED color control
+    rclcpp::Publisher<std_msgs::msg::ColorRGBA>::SharedPtr led_publisher_;
 public:
     using FindColor = hardware_team_robot::action::FindColor;
     using GoalHandleFindColor = rclcpp_action::ServerGoalHandle<FindColor>;
@@ -75,6 +77,5 @@ private:
     bool start_light_initialized_;
     int frame_count_;  // Counter for baseline establishment
 
-    void setRGBColor(uint8_t red, uint8_t green, uint8_t blue);
-    void clearRGBColor();
+
 };

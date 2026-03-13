@@ -104,6 +104,11 @@ TankOdometry::Pose TankOdometry::getCurrentPose() const {
 void TankOdometry::reset() {
     std::lock_guard<std::mutex> lock(pose_mutex_);
     current_pose_ = {0.0f, 0.0f, 0.0f};
+    last_fl_ticks_ = 0;
+    last_fr_ticks_ = 0;
+    last_rl_ticks_ = 0;
+    last_rr_ticks_ = 0;
+    has_encoder_baseline_ = false;
 }
 
 void TankOdometry::setPose(float x_inches, float y_inches, float theta_rad) {

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <algorithm>
 #include <thread>
-#include <pigpio.h>
+
 
 // ISR Wrapper
 static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
@@ -28,10 +28,11 @@ void ChassisNode::resetOdometry() {
     }
 }
 
-ChassisNode::~ChassisNode() {  
-    if (odometry_thread_.joinable()) odometry_thread_.join();  
-    if (execute_thread_.joinable()) execute_thread_.join();  
-} 
+ChassisNode::~ChassisNode() {
+    if (odometry_thread_.joinable()) odometry_thread_.join();
+    if (execute_thread_.joinable()) execute_thread_.join();
+    gpioTerminate();
+}
 
 void ChassisNode::odometry_update_loop() {
     rclcpp::Rate loop_rate(100);  // 100 Hz update rate
@@ -77,22 +78,52 @@ void ChassisNode::odometry_update_loop() {
 
 
 ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
-    // setup_motor_pins(); Replaced with this 
     motor_driver_ = std::make_shared<Hardware::PCA9685Driver>(1, 0x40);
     if (!motor_driver_->initialize()) {
         RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s", 
                     motor_driver_->getLastError().c_str());
-        motor_driver_.reset();  // To prevent using failed driver
+        motor_driver_.reset();
     } else {
-        RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
-        motor_ready_ = true; 
+        RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready");
+        motor_ready_ = true;
     }
 
-    // Default chassis dimensions for Tank Odmetry 
-    // (wheel diameter, horizontal distance, vertical distance)
     odometry_ = std::make_shared<Hardware::TankOdometry>(80.0f, 237.49f, 177.8f);
     encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
-    encoder_driver_->initialize();
+    if (encoder_driver_->initialize()) {
+        setup_encoders();
+        RCLCPP_INFO(this->get_logger(), "Encoders initialized");
+        // RGB LED GPIO setup
+        gpioSetMode(RGB_PIN_RED, PI_OUTPUT);
+        gpioSetMode(RGB_PIN_GREEN, PI_OUTPUT);
+        gpioSetMode(RGB_PIN_BLUE, PI_OUTPUT);
+        gpioPWM(RGB_PIN_RED, 0);
+        gpioPWM(RGB_PIN_GREEN, 0);
+        gpioPWM(RGB_PIN_BLUE, 0);
+    }
+
+    // /led_cmd subscriber
+    led_sub_ = this->create_subscription<std_msgs::msg::ColorRGBA>(
+        "/led_cmd", 10,
+        std::bind(&ChassisNode::led_callback, this, std::placeholders::_1));
+
+    // /intake_cmd subscriber
+    rclcpp::QoS intake_qos(10);
+    intake_qos.reliable();
+    intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
+        "/intake_cmd", intake_qos,
+        std::bind(&ChassisNode::intake_callback, this, std::placeholders::_1));
+    void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
+        gpioPWM(RGB_PIN_RED,   static_cast<uint8_t>(msg->r));
+        gpioPWM(RGB_PIN_GREEN, static_cast<uint8_t>(msg->g));
+        gpioPWM(RGB_PIN_BLUE,  static_cast<uint8_t>(msg->b));
+    }
+
+    void ChassisNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
+        if (!motor_driver_ || !motor_ready_) return;
+        motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_5,
+            msg->data > 0 ? 75 : msg->data < 0 ? -75 : 0);
+    }
     
     //Init IMU
     if (imu_.initialize() == 0) {

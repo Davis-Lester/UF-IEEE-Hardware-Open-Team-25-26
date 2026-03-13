@@ -12,6 +12,8 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
     gpioSetMode(ChassisNode::RGB_PIN_GREEN, PI_OUTPUT);
     gpioSetMode(ChassisNode::RGB_PIN_BLUE, PI_OUTPUT);
     clearRGBColor();
+
+    // Subscribe to RGB LED color commands
     
     // 2. Publisher for start light detection
     rclcpp::QoS start_light_qos(1);

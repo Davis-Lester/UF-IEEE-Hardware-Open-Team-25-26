@@ -184,16 +184,16 @@ void EncoderDriver::handleEncoderTick(int gpio, int level) {
 
     // Update the corresponding wheel counter
     if (gpio == fl_encoder_.channel_a) {
-        fl_ticks_.store(fl_ticks_.load() + direction);
+        fl_ticks_.fetch_add(direction);
     }
     else if (gpio == fr_encoder_.channel_a) {
-        fr_ticks_.store(fr_ticks_.load() + direction);
+        fr_ticks_.fetch_add(direction);
     }
     else if (gpio == rl_encoder_.channel_a) {
-        rl_ticks_.store(rl_ticks_.load() + direction);
+        rl_ticks_.fetch_add(direction);
     }
     else if (gpio == rr_encoder_.channel_a) {
-        rr_ticks_.store(rr_ticks_.load() + direction);
+        rr_ticks_.fetch_add(direction);
     }
 }
 
