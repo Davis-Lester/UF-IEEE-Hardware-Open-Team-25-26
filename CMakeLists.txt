@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.8)
 project(hardware_team_robot)
 
 if(NOT CMAKE_CXX_STANDARD)
@@ -29,6 +29,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 # Create library for sensors
 add_library(sensor_lib SHARED 
     src/sensors/VEML7700.cpp 
+    src/sensors/UltrasonicDistance.cpp
     src/sensors/MPU6050.cpp
     src/odometry.cpp
     src/navigation_controller.cpp
@@ -60,6 +61,11 @@ target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_t
 add_dependencies(chassis_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs)
 
+# IR Node
+add_executable(ir_node src/ir_node.cpp) 
+target_link_libraries(ir_node sensor_lib)
+ament_target_dependencies(ir_node rclcpp std_msgs)
+
 #Camera Node
 add_executable(camera_node src/camera_node.cpp)
 target_link_libraries(camera_node sensor_lib ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
@@ -81,7 +87,7 @@ install(TARGETS
   auton_node
   chassis_node
   camera_node
-  # ir_node removed per user request
+  ir_node
   # keypad_servo_node
   intake_node
   DESTINATION lib/${PROJECT_NAME}
