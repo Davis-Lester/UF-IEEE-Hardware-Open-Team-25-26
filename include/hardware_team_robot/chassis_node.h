@@ -40,6 +40,7 @@ private:
     std::shared_ptr<Hardware::PCA9685Driver> motor_driver_;
     std::atomic<bool> motor_ready_{false};
     std::mutex motor_mutex_;  // Protects motor control operations
+    std::atomic<bool> action_active_{false};  // Indicates if an action is currently controlling motors
 
     // Threads for background processes
     std::thread odometry_thread_;  

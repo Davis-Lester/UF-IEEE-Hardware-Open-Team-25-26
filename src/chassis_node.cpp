@@ -117,11 +117,12 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
 
     // Subscribe to motor commands from NavigationController
     motor_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        "motor_cmd", 10,
+        "motor_cmd", rclcpp::QoS(1).transient_local(),
         std::bind(&ChassisNode::motor_cmd_callback, this, std::placeholders::_1));
 }
 
 void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
+    action_active_ = true;  // Indicate action is active
     const auto goal = goal_handle->get_goal();
     auto result = std::make_shared<Drive::Result>();
     auto feedback = std::make_shared<Drive::Feedback>();
@@ -148,6 +149,7 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
     while (rclcpp::ok()) {
         if (goal_handle->is_canceling()) {
             stop_motors();
+            action_active_ = false;
             goal_handle->canceled(result);
             return;
         }
@@ -202,6 +204,7 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
     
     stop_motors();
     result->success = true;
+    action_active_ = false;
     goal_handle->succeed(result);
 }  
 
@@ -266,10 +269,23 @@ void ChassisNode::stop_motors() {
 }
 
 void ChassisNode::motor_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
+    // Ignore commands if an action is actively controlling motors
+    if (action_active_) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                            "Ignoring motor command from topic while action is active");
+        return;
+    }
+
     // Extract left and right motor speeds from Twist message
     // Convention: linear.x = left speed, linear.y = right speed
     float left_speed = static_cast<float>(msg->linear.x);
     float right_speed = static_cast<float>(msg->linear.y);
+    
+    // Validate inputs: check for finite values
+    if (!std::isfinite(left_speed) || !std::isfinite(right_speed)) {
+        RCLCPP_WARN(this->get_logger(), "Received non-finite motor speeds: left=%f, right=%f", left_speed, right_speed);
+        return;
+    }
     
     // Apply the motor commands (mutex protection is handled in set_tank_power)
     set_tank_power(static_cast<double>(left_speed), static_cast<double>(right_speed));
