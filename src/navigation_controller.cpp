@@ -60,17 +60,19 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
             "[NavigationController] FATAL: Odometry is null - controller is INVALID");
         return;
     }
+
+    // Define QoS: reliable reliability + volatile durability
+    rclcpp::QoS qos_profile(10); // queue depth of 10
+    qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
+    qos_profile.durability(rclcpp::DurabilityPolicy::Volatile);
     
     // Create publisher for motor commands with volatile durability and reliable reliability
     rclcpp::PublisherOptions pub_options;
-    pub_options.event_callbacks.publication_matched_callback =
-        [this](const rclcpp::QOSPublicationMatchedInfo & info) {
-            if (info.current_count > 0) {
-                is_valid_ = true;
-            } else {
-                is_valid_ = false;
-            }
-        };
+
+    pub_options.event_callbacks.matched_callback =
+    [this](const rclcpp::MatchedInfo & info) {
+        is_valid_ = (info.current_count > 0);
+    };
     pub_options.event_callbacks.incompatible_qos_callback =
         [this](rclcpp::QOSOfferedIncompatibleQoSInfo & info) {
             is_valid_ = false;

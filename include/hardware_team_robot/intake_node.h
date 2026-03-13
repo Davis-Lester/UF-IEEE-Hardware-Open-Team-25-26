@@ -3,7 +3,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int8.hpp"
-#include "hardware_team_robot/sensors/pca9685_driver.h"
 #include <memory>
 
 class IntakeNode : public rclcpp::Node {
@@ -12,16 +11,18 @@ public:
     
     // The destructor is critical for safety: it ensures stop_intake() 
     // is called if the node crashes or is gracefully shut down.
-    ~IntakeNode();
+    virtual ~IntakeNode();
 
 private:
     rclcpp::Time last_intake_cmd_time_;
     rclcpp::TimerBase::SharedPtr watchdog_timer_;
     void watchdog_callback();
 
+    void publish_validated_state(int state);
+
     // Subscriber for non-blocking intake commands (-1: Reverse, 0: Off, 1: On)
     rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr intake_sub_;
-    
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr intake_pub_;
     // Callback to process incoming intake states
     void intake_callback(const std_msgs::msg::Int8::SharedPtr msg);
 
@@ -30,19 +31,7 @@ private:
     
     // Safety helper to immediately cut power to the motor
     void stop_intake();
-
-
-    // HARDWARE PIN DEFINITIONS (these need to be updated)
-    // WARNING: Do NOT use the following reserved pins:
-    // - Ultrasonic: 7, 10, 14, 15
-    // - Encoders: 17, 27, 22, 4, 26, 21, 9, 11
-
-    
-    // PCA9685 channels for intake motor
-    static constexpr uint8_t INTAKE_PWM_CHANNEL_FWD = 2;
-    static constexpr uint8_t INTAKE_PWM_CHANNEL_REV = 3;
-
-    std::unique_ptr<Hardware::PCA9685Driver> pca_driver_; 
+    int current_state_;
 };
 
 #endif // INTAKE_NODE_H

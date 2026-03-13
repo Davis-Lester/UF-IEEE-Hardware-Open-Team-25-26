@@ -7,12 +7,6 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
         throw std::runtime_error("pigpio initialization failed");
     }
 
-    // Configure RGB pins as outputs (use ChassisNode pin constants)
-    gpioSetMode(ChassisNode::RGB_PIN_RED, PI_OUTPUT);
-    gpioSetMode(ChassisNode::RGB_PIN_GREEN, PI_OUTPUT);
-    gpioSetMode(ChassisNode::RGB_PIN_BLUE, PI_OUTPUT);
-    clearRGBColor();
-
     // Subscribe to RGB LED color commands
     
     // 2. Publisher for start light detection
@@ -60,7 +54,6 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
 }
 
 CameraProcessor::~CameraProcessor() {
-    clearRGBColor();
 }
 
 void CameraProcessor::check_timeout() {
@@ -84,15 +77,6 @@ void CameraProcessor::check_timeout() {
     }
 }
 
-void CameraProcessor::setRGBColor(uint8_t red, uint8_t green, uint8_t blue) {
-    gpioPWM(ChassisNode::RGB_PIN_RED, red);
-    gpioPWM(ChassisNode::RGB_PIN_GREEN, green);
-    gpioPWM(ChassisNode::RGB_PIN_BLUE, blue);
-}
-
-void CameraProcessor::clearRGBColor() {
-    setRGBColor(0, 0, 0);
-}
 
 void CameraProcessor::image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
     try {
@@ -153,23 +137,10 @@ void CameraProcessor::image_callback(const sensor_msgs::msg::Image::SharedPtr ms
             int pixel_count = cv::countNonZero(combined_mask);
 
             if (pixel_count > 500) {
-                // 1. Set the RGB LED color to match the detected color
-                if (target.name == "RED") {
-                    setRGBColor(255, 0, 0);
-                } else if (target.name == "GREEN") {
-                    setRGBColor(0, 255, 0);
-                } else if (target.name == "BLUE") {
-                    setRGBColor(0, 0, 255);
-                } else if (target.name == "PURPLE") {
-                    setRGBColor(180, 0, 180);
-                } else {
-                    setRGBColor(0, 0, 0);
-                }
-
                 // 2. Create and Publish a message for the IR Node
                 auto ir_msg = std_msgs::msg::UInt8();
                 ir_msg.data = target.colorCode;
-                ir_publisher_->publish(ir_msg);
+                // CHANGE PUBLISHER
                 RCLCPP_INFO(this->get_logger(), "Published detected color: %s", target.name.c_str());
 
                 // 3. Prepare the Action Result

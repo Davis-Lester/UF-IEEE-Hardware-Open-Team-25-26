@@ -9,7 +9,9 @@
 #include "hardware_team_robot/encoder_driver.h"
 #include "hardware_team_robot/sensors/pca9685_driver.h"
 #include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/color_rgba.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "std_msgs/msg/int8.hpp"
 #include <pigpio.h>
 #include <atomic>
 #include <thread>
@@ -55,6 +57,9 @@ private:
     std::shared_ptr<Hardware::EncoderDriver> encoder_driver_;
     std::shared_ptr<Hardware::TankOdometry> odometry_;
 
+    // subscriptions
+    rclcpp::Subscription<std_msgs::msg::ColorRGBA>::SharedPtr led_sub_;
+    rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr intake_sub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr motor_cmd_sub_;
 
     void odometry_update_loop();  // Continuously reads encoders and updates odometry
@@ -65,6 +70,9 @@ private:
     void handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle);
     void execute(const std::shared_ptr<GoalHandleDrive> goal_handle);
     void motor_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
+
+    void led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg);
+    void intake_callback(const std_msgs::msg::Int8::SharedPtr msg);
 
     // --- ENCODERS (4 Wheels) ---
     // Atomic variables for thread-safe ISR access
@@ -93,6 +101,8 @@ private:
     static constexpr int PIN_FR_ENC_A = 8, PIN_FR_ENC_B = 7; 
     static constexpr int PIN_RL_ENC_A = 16, PIN_RL_ENC_B = 12;
     static constexpr int PIN_RR_ENC_A = 23,  PIN_RR_ENC_B = 18;
+
+    
 };
 
 #endif // HARDWARE_TEAM_ROBOT_CHASSIS_NODE_H
