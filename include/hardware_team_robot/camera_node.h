@@ -8,6 +8,7 @@
 #include <chrono>
 
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp/qos.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 #include "std_msgs/msg/bool.hpp"

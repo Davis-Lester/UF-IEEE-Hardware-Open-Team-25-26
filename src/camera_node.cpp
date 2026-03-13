@@ -17,7 +17,9 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
     ir_publisher_ = this->create_publisher<std_msgs::msg::UInt8>("ir_command", 10);
     
     // 2. Publisher for start light detection
-    start_light_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/start_light_detected", 10);
+    rclcpp::QoS start_light_qos(1);
+    start_light_qos.transient_local();
+    start_light_publisher_ = this->create_publisher<std_msgs::msg::Bool>("start_light_detected", start_light_qos);
 
     // 3. Action Server for Auton Routine
     action_server_ = rclcpp_action::create_server<FindColor>(

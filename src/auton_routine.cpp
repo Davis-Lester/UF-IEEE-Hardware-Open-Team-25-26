@@ -25,8 +25,10 @@ AutonRoutine::AutonRoutine() : Node("auton_routine") {
     this->intake_pub_ = this->create_publisher<std_msgs::msg::Int8>("/intake_cmd", intake_qos);
 
 #if USE_START_LIGHT
+    rclcpp::QoS start_light_qos(1);
+    start_light_qos.transient_local();
     this->start_light_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-        "/start_light_detected", 10,
+        "start_light_detected", start_light_qos,
         std::bind(&AutonRoutine::start_light_callback, this, std::placeholders::_1));
 
     RCLCPP_INFO(this->get_logger(), "Waiting for competition start light...");
