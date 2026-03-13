@@ -114,7 +114,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
 
     // Subscribe to motor commands from NavigationController
     motor_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        "motor_cmd", rclcpp::QoS(1).transient_local(),
+        "motor_cmd", rclcpp::QoS(10).reliable(),
         std::bind(&ChassisNode::motor_cmd_callback, this, std::placeholders::_1));
 }
 

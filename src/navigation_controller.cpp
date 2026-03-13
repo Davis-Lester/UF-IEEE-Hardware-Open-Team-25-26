@@ -61,12 +61,25 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
         return;
     }
     
-    // Create publisher for motor commands
+    // Create publisher for motor commands with volatile durability and reliable reliability
+    rclcpp::PublisherOptions pub_options;
+    pub_options.event_callbacks.publication_matched_callback =
+        [this](const rclcpp::QOSPublicationMatchedInfo & info) {
+            if (info.current_count > 0) {
+                is_valid_ = true;
+            } else {
+                is_valid_ = false;
+            }
+        };
+    pub_options.event_callbacks.incompatible_qos_callback =
+        [this](rclcpp::QOSOfferedIncompatibleQoSInfo & info) {
+            is_valid_ = false;
+            if (node_) {
+                RCLCPP_ERROR(node_->get_logger(), "[NavigationController] Incompatible QoS detected for motor_cmd publisher!");
+            }
+        };
     motor_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(
-        "motor_cmd", rclcpp::QoS(10).transient_local().reliable());
-    
-    // Mark as valid only if required dependencies are present
-    is_valid_ = true;
+        "motor_cmd", rclcpp::QoS(10).reliable(), pub_options);
     
     // Initialize PID controllers with reasonable defaults for tank drive
     distance_pid_.kp = 0.5f;

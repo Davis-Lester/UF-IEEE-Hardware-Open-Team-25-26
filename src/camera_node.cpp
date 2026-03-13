@@ -7,14 +7,11 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
         throw std::runtime_error("pigpio initialization failed");
     }
 
-    // Configure RGB pins as outputs
-    gpioSetMode(RGB_PIN_RED, PI_OUTPUT);
-    gpioSetMode(RGB_PIN_GREEN, PI_OUTPUT);
-    gpioSetMode(RGB_PIN_BLUE, PI_OUTPUT);
+    // Configure RGB pins as outputs (use ChassisNode pin constants)
+    gpioSetMode(ChassisNode::RGB_PIN_RED, PI_OUTPUT);
+    gpioSetMode(ChassisNode::RGB_PIN_GREEN, PI_OUTPUT);
+    gpioSetMode(ChassisNode::RGB_PIN_BLUE, PI_OUTPUT);
     clearRGBColor();
-
-    // 1. Publisher to the IR Node
-    ir_publisher_ = this->create_publisher<std_msgs::msg::UInt8>("ir_command", 10);
     
     // 2. Publisher for start light detection
     rclcpp::QoS start_light_qos(1);
@@ -86,9 +83,9 @@ void CameraProcessor::check_timeout() {
 }
 
 void CameraProcessor::setRGBColor(uint8_t red, uint8_t green, uint8_t blue) {
-    gpioPWM(RGB_PIN_RED, red);
-    gpioPWM(RGB_PIN_GREEN, green);
-    gpioPWM(RGB_PIN_BLUE, blue);
+    gpioPWM(ChassisNode::RGB_PIN_RED, red);
+    gpioPWM(ChassisNode::RGB_PIN_GREEN, green);
+    gpioPWM(ChassisNode::RGB_PIN_BLUE, blue);
 }
 
 void CameraProcessor::clearRGBColor() {

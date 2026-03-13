@@ -16,6 +16,11 @@
 #include <mutex> 
 
 class ChassisNode : public rclcpp::Node {
+
+    // RGB LED GPIO pins used for visual feedback (shared with camera)
+    static constexpr int RGB_PIN_RED = 13;
+    static constexpr int RGB_PIN_GREEN = 19;
+    static constexpr int RGB_PIN_BLUE = 26;
 public:
     using Drive = hardware_team_robot::action::Drive;
     using GoalHandleDrive = rclcpp_action::ServerGoalHandle<Drive>;

@@ -62,7 +62,6 @@ private:
 
     // ROS Members
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subscription_;
-    rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr ir_publisher_;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr start_light_publisher_;
     rclcpp_action::Server<FindColor>::SharedPtr action_server_;
 
@@ -75,12 +74,6 @@ private:
     uint32_t baseline_brightness_;
     bool start_light_initialized_;
     int frame_count_;  // Counter for baseline establishment
-
-    // RGB LED GPIO pins used for visual feedback
-    // PINS UPDATED
-    static constexpr int RGB_PIN_RED = 13;
-    static constexpr int RGB_PIN_GREEN = 19;
-    static constexpr int RGB_PIN_BLUE = 26;
 
     void setRGBColor(uint8_t red, uint8_t green, uint8_t blue);
     void clearRGBColor();
