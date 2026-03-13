@@ -1,19 +1,15 @@
 #include "hardware_team_robot/intake_node.h"
-#include <pigpio.h>
 #include <stdexcept>
 #include <chrono> // Added for time and duration
 
 IntakeNode::IntakeNode() : Node("intake_node"), last_intake_cmd_time_(this->now()) {
     RCLCPP_INFO(this->get_logger(), "Initializing Intake Node...");
 
-    if (gpioInitialise() < 0) {
-        RCLCPP_FATAL(this->get_logger(), "pigpio initialization failed! Are you running the node with sudo?");
-        throw std::runtime_error("pigpio initialization failed");
+    pca_driver_ = std::make_unique<Hardware::PCA9685Driver>(1, 0x40);
+    if (!pca_driver_->initialize()) {
+        RCLCPP_FATAL(this->get_logger(), "PCA9685 initialization failed for IntakeNode");
+        throw std::runtime_error("PCA9685 initialization failed");
     }
-
-    // Configure the motor driver pins as outputs
-    gpioSetMode(INTAKE_DIR_PIN, PI_OUTPUT);
-    gpioSetMode(INTAKE_PWM_PIN, PI_OUTPUT);
 
     // Safety: Ensure the motor is strictly off at startup
     stop_intake();
@@ -43,8 +39,8 @@ IntakeNode::~IntakeNode() {
     // Safety: Guarantee motor stops if node crashes or is killed
     stop_intake();
     
-    // Release the GPIO resources
-    gpioTerminate();
+    // Release PCA9685 resources via RAII
+    pca_driver_.reset();
 }
 
 void IntakeNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
@@ -79,11 +75,11 @@ void IntakeNode::set_intake_hardware(int state) {
             
             // Safety: Cut power first if transitioning directly from reverse
             if (current_state == -1) {
-                gpioPWM(INTAKE_PWM_PIN, 0); 
+                pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 4096);
             }
-            
-            gpioWrite(INTAKE_DIR_PIN, 1);
-            gpioPWM(INTAKE_PWM_PIN, 255); // 100% duty cycle
+
+            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 3072);
+            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 4096);
             break;
             
         case -1: // Reverse / Outtake
@@ -91,11 +87,11 @@ void IntakeNode::set_intake_hardware(int state) {
             
             // Safety: Cut power first if transitioning directly from forward
             if (current_state == 1) {
-                gpioPWM(INTAKE_PWM_PIN, 0); 
+                pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 4096);
             }
-            
-            gpioWrite(INTAKE_DIR_PIN, 0);
-            gpioPWM(INTAKE_PWM_PIN, 255); // 100% duty cycle
+
+            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 4096);
+            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 3072);
             break;
             
         case 0:  // Explicit Off command
@@ -111,8 +107,10 @@ void IntakeNode::set_intake_hardware(int state) {
 void IntakeNode::stop_intake() {
     RCLCPP_INFO(this->get_logger(), "Intake: STOPPED");
     // Immediately cut power to the motor
-    gpioPWM(INTAKE_PWM_PIN, 0);
-    gpioWrite(INTAKE_DIR_PIN, 0);
+    if (pca_driver_) {
+        pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 4096);
+        pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 4096);
+    }
 }
 
 int main(int argc, char * argv[]) {

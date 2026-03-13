@@ -68,9 +68,10 @@ private:
     bool goal_active_;
 
     // RGB LED GPIO pins used for visual feedback
-    static constexpr int RGB_PIN_RED = 16;   // example pins, change to actual wiring
-    static constexpr int RGB_PIN_GREEN = 20;
-    static constexpr int RGB_PIN_BLUE = 21;
+    // PINS UPDATED
+    static constexpr int RGB_PIN_RED = 13;
+    static constexpr int RGB_PIN_GREEN = 19;
+    static constexpr int RGB_PIN_BLUE = 26;
 
     void setRGBColor(uint8_t red, uint8_t green, uint8_t blue);
     void clearRGBColor();

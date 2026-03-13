@@ -36,6 +36,7 @@ add_library(sensor_lib SHARED
     src/tank_odometry.cpp
     src/encoder_driver.cpp
     src/sensors/pca9685_driver.cpp
+    src/camera_lift_node.cpp
 )
 target_include_directories(sensor_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
