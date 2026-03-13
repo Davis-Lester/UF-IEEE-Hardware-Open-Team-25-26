@@ -24,9 +24,10 @@ AutonRoutine::AutonRoutine() : Node("auton_routine") {
     intake_qos.reliable();
     this->intake_pub_ = this->create_publisher<std_msgs::msg::Int8>("/intake_cmd", intake_qos);
 
+#if USE_START_LIGHT
     this->start_light_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-    "/start_light_detected", 10,
-    std::bind(&AutonRoutine::start_light_callback, this, std::placeholders::_1));
+        "/start_light_detected", 10,
+        std::bind(&AutonRoutine::start_light_callback, this, std::placeholders::_1));
 
     RCLCPP_INFO(this->get_logger(), "Waiting for competition start light...");
 
@@ -34,6 +35,12 @@ AutonRoutine::AutonRoutine() : Node("auton_routine") {
     timer_ = this->create_wall_timer(
         std::chrono::milliseconds(50), 
         std::bind(&AutonRoutine::check_and_run, this));
+#else
+    RCLCPP_INFO(this->get_logger(), "Start light disabled; running immediately");
+    timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(50),
+        std::bind(&AutonRoutine::check_and_run, this));
+#endif
 
     // --- NEW: Continuous Intake Publisher Timer (10Hz) ---
     intake_publish_timer_ = this->create_wall_timer(
@@ -58,12 +65,15 @@ AutonRoutine::~AutonRoutine() {
 }
 
 void AutonRoutine::check_and_run() {
-    if (start_detected_) {
-        timer_->cancel();  // Stop checking
-        
-        // Spawn a new thread to run the blocking sequence off the main executor
-        routine_thread_ = std::thread(&AutonRoutine::run_routine, this);
+#if USE_START_LIGHT
+    if (!start_detected_) {
+        return;
     }
+#endif
+    timer_->cancel();  // Stop checking
+
+    // Spawn a new thread to run the blocking sequence off the main executor
+    routine_thread_ = std::thread(&AutonRoutine::run_routine, this);
 }
 
 // --- NEW: Update the state and let the timer handle the publishing ---

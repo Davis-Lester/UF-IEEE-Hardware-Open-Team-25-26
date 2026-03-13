@@ -61,11 +61,6 @@ target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_t
 add_dependencies(chassis_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs)
 
-# IR Node
-add_executable(ir_node src/ir_node.cpp) 
-target_link_libraries(ir_node sensor_lib)
-ament_target_dependencies(ir_node rclcpp std_msgs)
-
 #Camera Node
 add_executable(camera_node src/camera_node.cpp)
 target_link_libraries(camera_node sensor_lib ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
@@ -87,7 +82,7 @@ install(TARGETS
   auton_node
   chassis_node
   camera_node
-  ir_node
+  # ir_node
   # keypad_servo_node
   intake_node
   DESTINATION lib/${PROJECT_NAME}

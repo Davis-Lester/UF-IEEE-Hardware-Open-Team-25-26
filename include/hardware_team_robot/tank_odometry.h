@@ -24,11 +24,15 @@ public:
         float theta_rad;
     };
 
-    TankOdometry(float track_width_mm,
-                 float wheelbase_mm,
-                 float wheel_diameter_mm);
+    TankOdometry(float wheel_diameter_mm,
+                 float wheel_distance_horizontal_mm,
+                 float wheel_distance_vertical_mm);
     
     ~TankOdometry();
+
+    void setRobotGeometry(float wheel_diameter_mm,
+                          float wheel_distance_horizontal_mm,
+                          float wheel_distance_vertical_mm);
 
     void update(int32_t fl_ticks,
                 int32_t fr_ticks,
@@ -42,13 +46,12 @@ public:
     float getInchesPerTick() const;
 
 private:
-    float track_width_mm_;
-    float wheelbase_mm_;
+    float wheel_distance_horizontal_mm_;  // track width (left-right)
+    float wheel_distance_vertical_mm_;    // wheelbase (front-back)
     float wheel_diameter_mm_;
     float mm_per_tick_;
     float inches_per_tick_;
-    bool has_encoder_baseline_; //This tracks if encoder baseline is init
-
+    bool has_encoder_baseline_; // This tracks if encoder baseline is init
     Pose current_pose_;
 
     int32_t last_fl_ticks_;

@@ -4,9 +4,11 @@
 
 namespace Hardware {
 
-TankOdometry::TankOdometry(float track_width_mm, float wheelbase_mm, float wheel_diameter_mm)
-    : track_width_mm_(track_width_mm),
-      wheelbase_mm_(wheelbase_mm),
+TankOdometry::TankOdometry(float wheel_diameter_mm,
+                             float wheel_distance_horizontal_mm,
+                             float wheel_distance_vertical_mm)
+    : wheel_distance_horizontal_mm_(wheel_distance_horizontal_mm),
+      wheel_distance_vertical_mm_(wheel_distance_vertical_mm),
       wheel_diameter_mm_(wheel_diameter_mm),
       last_fl_ticks_(0),
       last_fr_ticks_(0),
@@ -24,12 +26,25 @@ TankOdometry::TankOdometry(float track_width_mm, float wheelbase_mm, float wheel
     
     printf("[TankOdometry] Initialized:\n");
     printf("  Wheel diameter: %.1f mm (%.2f inches)\n", wheel_diameter_mm_, wheel_diameter_mm_ / 25.4f);
-    printf("  Track width: %.1f mm (%.2f inches)\n", track_width_mm_, track_width_mm_ / 25.4f);
-    printf("  Wheelbase: %.1f mm (%.2f inches)\n", wheelbase_mm_, wheelbase_mm_ / 25.4f);
+    printf("  Horizontal wheel distance: %.1f mm (%.2f inches)\n", wheel_distance_horizontal_mm_, wheel_distance_horizontal_mm_ / 25.4f);
+    printf("  Vertical wheel distance: %.1f mm (%.2f inches)\n", wheel_distance_vertical_mm_, wheel_distance_vertical_mm_ / 25.4f);
     printf("  Distance per tick: %.4f mm (%.6f inches)\n", mm_per_tick_, inches_per_tick_);
 }
 
 TankOdometry::~TankOdometry() {
+}
+
+void TankOdometry::setRobotGeometry(float wheel_diameter_mm,
+                                    float wheel_distance_horizontal_mm,
+                                    float wheel_distance_vertical_mm) {
+    wheel_diameter_mm_ = wheel_diameter_mm;
+    wheel_distance_horizontal_mm_ = wheel_distance_horizontal_mm;
+    wheel_distance_vertical_mm_ = wheel_distance_vertical_mm;
+
+    float wheel_circumference_mm = M_PI * wheel_diameter_mm_;
+    const float CPR_PER_REVOLUTION = 1200.0f;
+    mm_per_tick_ = wheel_circumference_mm / CPR_PER_REVOLUTION;
+    inches_per_tick_ = mm_per_tick_ / 25.4f;
 }
 
 void TankOdometry::update(int32_t fl_ticks, int32_t fr_ticks,
@@ -112,7 +127,7 @@ void TankOdometry::calculateDelta(int32_t dfl, int32_t dfr, int32_t drl, int32_t
     float right_avg_mm = (dfr_mm + drr_mm) / 2.0f;
     
     d_forward_mm = (left_avg_mm + right_avg_mm) / 2.0f;
-    d_rotation_rad = (right_avg_mm - left_avg_mm) / track_width_mm_;
+    d_rotation_rad = (right_avg_mm - left_avg_mm) / wheel_distance_horizontal_mm_;
 }
 
 } // namespace Hardware

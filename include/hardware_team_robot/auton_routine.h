@@ -24,6 +24,10 @@
 #include <atomic>
 #include <thread>
 
+#ifndef USE_START_LIGHT
+#define USE_START_LIGHT 1
+#endif
+
 class AutonRoutine : public rclcpp::Node {
 public:
     using Drive = hardware_team_robot::action::Drive;
@@ -43,9 +47,11 @@ private:
     rclcpp::TimerBase::SharedPtr intake_publish_timer_;
     void intake_publish_callback();
     
+#if USE_START_LIGHT
     // Start Light Detection Subscriber
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr start_light_sub_;
     std::atomic<bool> start_detected_{false};
+#endif
 
     std::thread routine_thread_;
     
