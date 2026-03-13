@@ -62,7 +62,8 @@ NavigationController::NavigationController(std::shared_ptr<TankOdometry> odom,
     }
     
     // Create publisher for motor commands
-    motor_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("motor_cmd", 10);
+    motor_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(
+        "motor_cmd", rclcpp::QoS(10).transient_local().reliable());
     
     // Mark as valid only if required dependencies are present
     is_valid_ = true;
@@ -85,6 +86,12 @@ NavigationController::~NavigationController() {
 
 void NavigationController::sendTankSpeeds(float left_speed, float right_speed) {
     // Publish motor command message
+    if (!motor_cmd_pub_) {
+        if (node_) {
+            RCLCPP_ERROR(node_->get_logger(), "[NavigationController] motor_cmd_pub_ is null! Cannot publish motor command.");
+        }
+        return;
+    }
     auto msg = geometry_msgs::msg::Twist();
     msg.linear.x = left_speed;
     msg.linear.y = right_speed;
@@ -92,9 +99,7 @@ void NavigationController::sendTankSpeeds(float left_speed, float right_speed) {
     msg.angular.x = 0.0;
     msg.angular.y = 0.0;
     msg.angular.z = 0.0;
-    
     motor_cmd_pub_->publish(msg);
-    
     if (debug_logging_ && node_) {
         RCLCPP_DEBUG(node_->get_logger(), 
             "[NavigationController] Published motor cmd: L=%.1f R=%.1f", 

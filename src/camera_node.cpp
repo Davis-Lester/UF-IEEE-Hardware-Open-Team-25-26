@@ -116,12 +116,16 @@ void CameraProcessor::image_callback(const sensor_msgs::msg::Image::SharedPtr ms
                 baseline_brightness_ = (baseline_brightness_ * frame_count_ + current_brightness) / (frame_count_ + 1);
                 frame_count_++;
                 if (frame_count_ >= 10) {
+                    // Enforce a minimum baseline to avoid false triggers in darkness
+                    if (baseline_brightness_ < 30) baseline_brightness_ = 30;
                     start_light_initialized_ = true;
                     RCLCPP_INFO(this->get_logger(), "Start light baseline established: %d", baseline_brightness_);
                 }
             }
             // Check for start light if baseline is established
-            else if (start_light_initialized_ && current_brightness > baseline_brightness_ * 2.5) {
+            else if (start_light_initialized_ && 
+                     current_brightness > baseline_brightness_ * 2.5 &&
+                     (current_brightness - baseline_brightness_) > 40) {
                 start_light_detected_ = true;
                 RCLCPP_INFO(this->get_logger(), "START LIGHT DETECTED! (Brightness: %d, Baseline: %d)", 
                            current_brightness, baseline_brightness_);

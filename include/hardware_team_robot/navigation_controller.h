@@ -17,7 +17,6 @@ namespace Hardware {
 class NavigationController {
 public:
     // Constructor requires non-null odometry and ROS node
-    // chassis_interface is optional but motors won't move without it
     NavigationController(std::shared_ptr<TankOdometry> odom,
                          std::shared_ptr<rclcpp::Node> rclcpp_node);
     

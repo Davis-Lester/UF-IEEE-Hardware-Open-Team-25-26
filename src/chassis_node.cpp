@@ -75,20 +75,17 @@ void ChassisNode::odometry_update_loop() {
     }
 }
 
+
 ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
-    if (gpioInitialise() < 0) {
-        RCLCPP_ERROR(this->get_logger(), "Pigpio Init Failed!");
+    // setup_motor_pins(); Replaced with this 
+    motor_driver_ = std::make_shared<Hardware::PCA9685Driver>(1, 0x40);
+    if (!motor_driver_->initialize()) {
+        RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s", 
+                    motor_driver_->getLastError().c_str());
+        motor_driver_.reset();  // To prevent using failed driver
     } else {
-        // setup_motor_pins(); Replaced with this 
-        motor_driver_ = std::make_shared<Hardware::PCA9685Driver>(1, 0x40);
-        if (!motor_driver_->initialize()) {
-            RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s", 
-                        motor_driver_->getLastError().c_str());
-            motor_driver_.reset();  // To prevent using failed driver
-        } else {
-            RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
-            motor_ready_ = true; 
-        }
+        RCLCPP_INFO(this->get_logger(), "PCA9685 Motor Driver Ready @ 1000 Hz");
+        motor_ready_ = true; 
     }
 
     // Default chassis dimensions for Tank Odmetry 
