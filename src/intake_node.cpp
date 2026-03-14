@@ -13,7 +13,7 @@ IntakeNode::IntakeNode() : Node("intake_node"), last_intake_cmd_time_(this->now(
 
     // Subscriber: Listen for raw commands from UI/Teleop
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
-        "/intake_cmd_raw", 10,
+        "/intake_cmd", 10,
         std::bind(&IntakeNode::intake_callback, this, std::placeholders::_1)
     );
 
@@ -26,12 +26,18 @@ IntakeNode::IntakeNode() : Node("intake_node"), last_intake_cmd_time_(this->now(
         std::bind(&IntakeNode::watchdog_callback, this)
     );
 
-    RCLCPP_INFO(this->get_logger(), "Intake Logic Node ready. Filtering /intake_cmd_raw -> /intake_cmd_validated");
+    RCLCPP_INFO(this->get_logger(), "Intake Logic Node ready. Filtering /intake_cmd -> /intake_cmd_validated");
 }
 
 IntakeNode::~IntakeNode() {
-    RCLCPP_WARN(this->get_logger(), "Shutting down Intake Node. Sending safety stop.");
-    publish_validated_state(0);
+    // Verify ROS context and publisher are still valid before attempting to publish
+    if (rclcpp::ok() && intake_pub_) {
+        RCLCPP_WARN(this->get_logger(), "Shutting down Intake Node. Sending safety stop.");
+        publish_validated_state(0);
+    } else {
+        // Fallback warning using standard error since ROS logging might be offline
+        std::cerr << "[IntakeNode WARNING] ROS context invalid or publisher uninitialized. Safety stop could not be guaranteed!" << std::endl;
+    }
 }
 
 void IntakeNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
@@ -59,7 +65,10 @@ void IntakeNode::publish_validated_state(int state) {
     auto message = std_msgs::msg::Int8();
     message.data = static_cast<int8_t>(state);
     
-    intake_pub_->publish(message);
+   // Extra safety guard just in case
+    if (intake_pub_) {
+        intake_pub_->publish(message);
+    }
     
     // Log the transition
     if (state == 1) RCLCPP_INFO(this->get_logger(), "State: FORWARD");

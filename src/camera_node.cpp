@@ -53,9 +53,6 @@ CameraProcessor::CameraProcessor() : Node("camera_processor") {
     );
 }
 
-CameraProcessor::~CameraProcessor() {
-}
-
 void CameraProcessor::check_timeout() {
     // safely exit if no goal is currently active or the handle is null
     if (!goal_active_ || active_goal_handle_ == nullptr) return;
@@ -138,9 +135,6 @@ void CameraProcessor::image_callback(const sensor_msgs::msg::Image::SharedPtr ms
 
             if (pixel_count > 500) {
                 // 2. Create and Publish a message for the IR Node
-                auto ir_msg = std_msgs::msg::UInt8();
-                ir_msg.data = target.colorCode;
-                // CHANGE PUBLISHER
                 RCLCPP_INFO(this->get_logger(), "Published detected color: %s", target.name.c_str());
 
                 // 3. Prepare the Action Result

@@ -16,8 +16,6 @@ find_package(geometry_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
-find_package(geometry_msgs REQUIRED)
-
 
 find_library(PIGPIO_LIB pigpio REQUIRED)
 find_library(I2C_LIB i2c REQUIRED)

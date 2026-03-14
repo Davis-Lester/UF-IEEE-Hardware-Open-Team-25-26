@@ -111,7 +111,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     rclcpp::QoS intake_qos(10);
     intake_qos.reliable();
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
-        "/intake_cmd", intake_qos,
+        "/intake_cmd_validated", intake_qos,
         std::bind(&ChassisNode::intake_callback, this, std::placeholders::_1));
     
 
@@ -150,6 +150,7 @@ void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
     }
 
 void ChassisNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(motor_mutex_);
         if (!motor_driver_ || !motor_ready_) return;
         motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_5,
             msg->data > 0 ? 75 : msg->data < 0 ? -75 : 0);
