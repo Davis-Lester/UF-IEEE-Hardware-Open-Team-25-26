@@ -31,6 +31,15 @@ void ChassisNode::resetOdometry() {
 ChassisNode::~ChassisNode() {
     if (odometry_thread_.joinable()) odometry_thread_.join();
     if (execute_thread_.joinable()) execute_thread_.join();
+
+    // Explicitly turn off the RGB LED before shutting down
+    gpioPWM(RGB_PIN_RED, 0);
+    gpioPWM(RGB_PIN_GREEN, 0);
+    gpioPWM(RGB_PIN_BLUE, 0);
+
+    // Explicitly stop motors on shutdown
+    stop_motors();
+
     gpioTerminate();
 }
 
