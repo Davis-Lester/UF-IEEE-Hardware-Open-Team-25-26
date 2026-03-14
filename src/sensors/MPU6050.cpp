@@ -44,80 +44,63 @@ MPU6050::~MPU6050()
 int MPU6050::initialize()
 {
     std::lock_guard<std::mutex> lock(i2c_mutex_);
-    
-    // Open I2C device
+
     char path[64];
     snprintf(path, sizeof(path), "/dev/i2c-%d", i2c_bus_);
-    
+
     fd_ = open(path, O_RDWR);
     if (fd_ < 0) {
+        fprintf(stderr, "[MPU6050] ERROR: Failed to open %s (errno %d: %s)\n", path, errno, strerror(errno));
         return -1;
     }
-    
-    // Set I2C slave address to 0x68
-    // IMPORTANT: AD0 pin must be connected to GND for address 0x68
+    fprintf(stderr, "[MPU6050] Opened %s OK\n", path);
+
     if (ioctl(fd_, I2C_SLAVE, MPU6050_ADDR) < 0) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: ioctl I2C_SLAVE 0x%02X failed (errno %d: %s)\n", MPU6050_ADDR, errno, strerror(errno));
+        close(fd_); fd_ = -1; return -1;
     }
-    
-    // Verify device identity (readRegister is called, which needs lock)
+    fprintf(stderr, "[MPU6050] ioctl address 0x%02X OK\n", MPU6050_ADDR);
+
     uint8_t who_am_i_value;
     if (readRegister(WHO_AM_I, &who_am_i_value) != 0) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: WHO_AM_I read failed\n");
+        close(fd_); fd_ = -1; return -1;
     }
+    fprintf(stderr, "[MPU6050] WHO_AM_I = 0x%02X\n", who_am_i_value);
+
     if (who_am_i_value != 0x68 && who_am_i_value != 0x40) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: Unexpected WHO_AM_I value 0x%02X\n", who_am_i_value);
+        close(fd_); fd_ = -1; return -1;
     }
-    
-    // Wake up MPU6050 (write 0x00 to PWR_MGMT_1)
-    // This clears the sleep bit and selects internal 8MHz oscillator as clock source
+
     if (writeRegister(PWR_MGMT_1, 0x00) != 0) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: PWR_MGMT_1 write failed\n");
+        close(fd_); fd_ = -1; return -1;
     }
-    
-    // Set sample rate divider to 19 for ~50Hz
-    // Sample rate = 1kHz / (1 + SMPLRT_DIV) = 1000 / (1 + 19) = 50 Hz
+    fprintf(stderr, "[MPU6050] PWR_MGMT_1 OK\n");
+
     if (writeRegister(SMPLRT_DIV, 19) != 0) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: SMPLRT_DIV write failed\n");
+        close(fd_); fd_ = -1; return -1;
     }
-    
-    // Configure DLPF (CONFIG register = 0x02)
-    // DLPF_CFG = 2 provides ~50Hz bandwidth
+
     if (writeRegister(CONFIG, DLPF_CFG_2) != 0) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: CONFIG write failed\n");
+        close(fd_); fd_ = -1; return -1;
     }
-    
-    // Set gyro range to ±500°/s (GYRO_CONFIG = 0x08)
-    // FS_SEL = 1 (bits 4:3 = 01) sets ±500°/s range
+
     if (writeRegister(GYRO_CONFIG, FS_SEL_500) != 0) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: GYRO_CONFIG write failed\n");
+        close(fd_); fd_ = -1; return -1;
     }
-    
-    // Set accel range to ±4g (ACCEL_CONFIG = 0x08)
-    // AFS_SEL = 1 (bits 4:3 = 01) sets ±4g range
+
     if (writeRegister(ACCEL_CONFIG, AFS_SEL_4G) != 0) {
-        close(fd_);
-        fd_ = -1;
-        return -1;
+        fprintf(stderr, "[MPU6050] ERROR: ACCEL_CONFIG write failed\n");
+        close(fd_); fd_ = -1; return -1;
     }
-    
-    // Wait 100ms for sensor to stabilize
+
     usleep(100000);
-    
+    fprintf(stderr, "[MPU6050] Init complete\n");
     return 0;
 }
 
