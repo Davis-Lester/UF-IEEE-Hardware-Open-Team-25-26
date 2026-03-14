@@ -377,6 +377,12 @@ int main(int argc, char * argv[]) {
     cfg |= PI_CFG_NOSIGHANDLER;
     gpioCfgSetInternals(cfg);
 
+    // 2. Initialize the library
+    if (gpioInitialise() < 0) {
+        std::cerr << "FATAL: pigpio initialization failed. Are you root?\n";
+        return 1;
+    }
+
     // 2. Standard ROS 2 startup
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<ChassisNode>());
