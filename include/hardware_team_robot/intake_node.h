@@ -25,12 +25,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr intake_pub_;
     // Callback to process incoming intake states
     void intake_callback(const std_msgs::msg::Int8::SharedPtr msg);
-
-    // Translates the integer state into hardware GPIO/PWM writes
-    void set_intake_hardware(int state);
     
-    // Safety helper to immediately cut power to the motor
-    void stop_intake();
     int current_state_;
 };
 
