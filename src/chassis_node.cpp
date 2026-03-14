@@ -152,6 +152,8 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     motor_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
         "motor_cmd", rclcpp::QoS(10).reliable(),
         std::bind(&ChassisNode::motor_cmd_callback, this, std::placeholders::_1));
+    
+    stop_motors(); // start all motors off
 }
 
 void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
