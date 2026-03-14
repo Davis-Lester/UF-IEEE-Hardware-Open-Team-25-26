@@ -8,11 +8,6 @@
 #include <thread>
 
 
-// ISR Wrapper
-static void encoder_isr_wrapper(int gpio, int level, uint32_t tick, void *user) {
-    ChassisNode *node = (ChassisNode*)user;
-    node->handle_encoder_tick(gpio, level);
-}
 
 Hardware::TankOdometry::Pose ChassisNode::getOdometryPose() const {
     if (odometry_) {
@@ -78,16 +73,17 @@ void ChassisNode::odometry_update_loop() {
             odometry_->update(fl, fr, rl, rr, heading_rad);
         } 
         
-        // Explicitly turn off the RGB LED before shutting down
-        gpioPWM(RGB_PIN_RED, 0);
-        gpioPWM(RGB_PIN_GREEN, 0);
-        gpioPWM(RGB_PIN_BLUE, 0);
-
-        // Explicitly stop motors on shutdown
-        stop_motors();
         
         loop_rate.sleep();
     }
+
+    // Explicitly turn off the RGB LED before shutting down
+    gpioPWM(RGB_PIN_RED, 0);
+    gpioPWM(RGB_PIN_GREEN, 0);
+    gpioPWM(RGB_PIN_BLUE, 0);
+
+    // Explicitly stop motors on shutdown
+    stop_motors();
 }
 
 
@@ -103,9 +99,14 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     }
 
     odometry_ = std::make_shared<Hardware::TankOdometry>(80.0f, 237.49f, 177.8f);
-    encoder_driver_ = std::make_shared<Hardware::EncoderDriver>();
+    encoder_driver_ = std::make_shared<Hardware::EncoderDriver>(
+        PIN_FL_ENC_A, PIN_FL_ENC_B,
+        PIN_FR_ENC_A, PIN_FR_ENC_B,
+        PIN_RL_ENC_A, PIN_RL_ENC_B,
+        PIN_RR_ENC_A, PIN_RR_ENC_B
+    );
+
     if (encoder_driver_->initialize()) {
-        setup_encoders();
         RCLCPP_INFO(this->get_logger(), "Encoders initialized");
         // RGB LED GPIO setup
         gpioSetMode(RGB_PIN_RED, PI_OUTPUT);
@@ -173,25 +174,17 @@ void ChassisNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
     }
 
 void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
-    action_active_ = true;  // Indicate action is active
+    action_active_ = true;
     const auto goal = goal_handle->get_goal();
     auto result = std::make_shared<Drive::Result>();
     auto feedback = std::make_shared<Drive::Feedback>();
 
-    // Reset Encoders
-    fl_ticks_ = 0; fr_ticks_ = 0;
-    rl_ticks_ = 0; rr_ticks_ = 0;
+    // Reset Encoders via the Driver
+    if (encoder_driver_) encoder_driver_->reset();
 
     double current_val = 0.0;
     double error = 0.0;
-    double kp = 0.0;
-    
-    // Determine Control Mode
-    bool is_turning = (goal->mode == "TURN");
-
-    // Tuning
-    if (is_turning) kp = 2.0;
-    else kp = 0.6; 
+    double kp = (goal->mode == "TURN") ? 2.0 : 0.6; 
 
     rclcpp::Rate loop_rate(50);
     double dt = 0.02;
@@ -205,44 +198,33 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
             return;
         }
         
-        if (is_turning) {
+        if (goal->mode == "TURN") {
             float gx, gy, gz;
-            // Check IMU read success before using gyro data
             if (imu_.readGyro(&gx, &gy, &gz) == 0) {
                 current_val += (gz * dt);
                 error = goal->target_value - current_val;
-            } else {
-                // IMU read failed - skip integration, keep previous error
-                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
-                                    "IMU read failed during turn");
             }
         } 
         else {
-            // TANK DRIVE: Average all 4 wheels for forward/backward
-            double sum = std::abs(fl_ticks_) + std::abs(fr_ticks_) + std::abs(rl_ticks_) + std::abs(rr_ticks_);
-            double avg_ticks = sum / 4.0;
+            // TANK DRIVE: Fetch atomic ticks from driver
+            double fl = std::abs(encoder_driver_->getFrontLeftTicks());
+            double fr = std::abs(encoder_driver_->getFrontRightTicks());
+            double rl = std::abs(encoder_driver_->getRearLeftTicks());
+            double rr = std::abs(encoder_driver_->getRearRightTicks());
+            
+            double avg_ticks = (fl + fr + rl + rr) / 4.0;
             if (goal->target_value < 0) avg_ticks = -avg_ticks;
             
             current_val = avg_ticks;
             error = goal->target_value - current_val;
         }
         
-        double output = error * kp;
-        if (output > goal->max_speed) output = goal->max_speed;
-        if (output < -goal->max_speed) output = -goal->max_speed;
+        double output = std::clamp(error * kp, -goal->max_speed, goal->max_speed);
         
-        // ========== Tank drive motor mixing (left/right only) ==========
-        if (is_turning) {
-            // Turn in place: left backward, right forward
-            set_tank_power(-output, output);
-        } 
-        else {
-            // Drive straight: both sides same speed
-            set_tank_power(output, output);
-        }
-        // ========================================================================
+        if (goal->mode == "TURN") set_tank_power(-output, output);
+        else set_tank_power(output, output);
         
-        double tolerance = is_turning ? 2.0 : 25.0;
+        double tolerance = (goal->mode == "TURN") ? 2.0 : 25.0;
         if (std::abs(error) < tolerance) settled_count++;
         else settled_count = 0;
         
@@ -257,7 +239,7 @@ void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
     result->success = true;
     action_active_ = false;
     goal_handle->succeed(result);
-}  
+}
 
 // ========== Simplified tank drive control (4 wheels: 2 per side) ==========
 void ChassisNode::set_tank_power(double left, double right) {
@@ -281,36 +263,21 @@ void ChassisNode::set_tank_power(double left, double right) {
     motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_4, right_pct);
 }
 
-void ChassisNode::setup_encoders() {
-    int inputs[] = {
-        PIN_FL_ENC_A, PIN_FL_ENC_B, PIN_FR_ENC_A, PIN_FR_ENC_B,
-        PIN_RL_ENC_A, PIN_RL_ENC_B, PIN_RR_ENC_A, PIN_RR_ENC_B
-    };
-    for (int p : inputs) {
-        gpioSetMode(p, PI_INPUT);
-        gpioSetPullUpDown(p, PI_PUD_UP);
-    }
 
-    gpioSetISRFuncEx(PIN_FL_ENC_A, EITHER_EDGE, 0, encoder_isr_wrapper, (void*)this);
-    gpioSetISRFuncEx(PIN_FR_ENC_A, EITHER_EDGE, 0, encoder_isr_wrapper, (void*)this);
-    gpioSetISRFuncEx(PIN_RL_ENC_A, EITHER_EDGE, 0, encoder_isr_wrapper, (void*)this);
-    gpioSetISRFuncEx(PIN_RR_ENC_A, EITHER_EDGE, 0, encoder_isr_wrapper, (void*)this);
-}
-
-void ChassisNode::handle_encoder_tick(int gpio, int level) {
-    if (gpio == PIN_FL_ENC_A) {
-        if (level == gpioRead(PIN_FL_ENC_B)) fl_ticks_++; else fl_ticks_--;
-    } 
-    else if (gpio == PIN_FR_ENC_A) {
-        if (level == gpioRead(PIN_FR_ENC_B)) fr_ticks_--; else fr_ticks_++;
-    }
-    else if (gpio == PIN_RL_ENC_A) {
-        if (level == gpioRead(PIN_RL_ENC_B)) rl_ticks_++; else rl_ticks_--;
-    }
-    else if (gpio == PIN_RR_ENC_A) {
-        if (level == gpioRead(PIN_RR_ENC_B)) rr_ticks_--; else rr_ticks_++;
-    }
-}
+// void ChassisNode::handle_encoder_tick(int gpio, int level) {
+//     if (gpio == PIN_FL_ENC_A) {
+//         if (level == gpioRead(PIN_FL_ENC_B)) fl_ticks_++; else fl_ticks_--;
+//     } 
+//     else if (gpio == PIN_FR_ENC_A) {
+//         if (level == gpioRead(PIN_FR_ENC_B)) fr_ticks_--; else fr_ticks_++;
+//     }
+//     else if (gpio == PIN_RL_ENC_A) {
+//         if (level == gpioRead(PIN_RL_ENC_B)) rl_ticks_++; else rl_ticks_--;
+//     }
+//     else if (gpio == PIN_RR_ENC_A) {
+//         if (level == gpioRead(PIN_RR_ENC_B)) rr_ticks_--; else rr_ticks_++;
+//     }
+// }
 
 void ChassisNode::stop_motors() {
     std::lock_guard<std::mutex> lock(motor_mutex_);
@@ -387,5 +354,6 @@ int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<ChassisNode>());
     rclcpp::shutdown();
+    gpioTerminate();
     return 0;
 }
