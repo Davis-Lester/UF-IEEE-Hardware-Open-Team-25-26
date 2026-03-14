@@ -106,7 +106,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         PIN_RR_ENC_A, PIN_RR_ENC_B
     );
 
-    if (encoder_driver_->initialize()) {
+    if (encoder_driver_->initialize() == 0) {
         RCLCPP_INFO(this->get_logger(), "Encoders initialized");
         // RGB LED GPIO setup
         gpioSetMode(RGB_PIN_RED, PI_OUTPUT);
