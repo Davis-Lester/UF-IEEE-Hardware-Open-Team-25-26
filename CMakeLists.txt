@@ -65,12 +65,12 @@ ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs geometry_ms
 add_executable(camera_node src/camera_node.cpp)
 target_link_libraries(camera_node sensor_lib ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
 add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
-ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs)
+ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs geometry_msgs)
 
-# Intake Control Node
 
 # Intake Control Node (no pigpio or PCA9685 dependencies)
 add_executable(intake_node src/intake_node.cpp)
+target_link_libraries(intake_node sensor_lib "${cpp_typesupport_target}")
 add_dependencies(intake_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(intake_node rclcpp std_msgs)
 

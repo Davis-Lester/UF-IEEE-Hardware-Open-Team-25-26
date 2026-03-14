@@ -111,23 +111,10 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
     rclcpp::QoS intake_qos(10);
     intake_qos.reliable();
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
-        "/intake_cmd", intake_qos,
+        "/intake_cmd_validated", intake_qos,
         std::bind(&ChassisNode::intake_callback, this, std::placeholders::_1));
+    
 
-    void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
-        auto to_pwm = [](float c) -> uint8_t {
-            return static_cast<uint8_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f);
-        };
-        gpioPWM(RGB_PIN_RED,   to_pwm(msg->r));
-        gpioPWM(RGB_PIN_GREEN, to_pwm(msg->g));
-        gpioPWM(RGB_PIN_BLUE,  to_pwm(msg->b));
-    }
-
-    void ChassisNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
-        if (!motor_driver_ || !motor_ready_) return;
-        motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_5,
-            msg->data > 0 ? 75 : msg->data < 0 ? -75 : 0);
-    }
     
     //Init IMU
     if (imu_.initialize() == 0) {
@@ -152,6 +139,22 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1) {
         "motor_cmd", rclcpp::QoS(10).reliable(),
         std::bind(&ChassisNode::motor_cmd_callback, this, std::placeholders::_1));
 }
+
+void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
+        auto to_pwm = [](float c) -> uint8_t {
+            return static_cast<uint8_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f);
+        };
+        gpioPWM(RGB_PIN_RED,   to_pwm(msg->r));
+        gpioPWM(RGB_PIN_GREEN, to_pwm(msg->g));
+        gpioPWM(RGB_PIN_BLUE,  to_pwm(msg->b));
+    }
+
+void ChassisNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(motor_mutex_);
+        if (!motor_driver_ || !motor_ready_) return;
+        motor_driver_->setMotorSpeed(Hardware::PCA9685Driver::MOTOR_5,
+            msg->data > 0 ? 75 : msg->data < 0 ? -75 : 0);
+    }
 
 void ChassisNode::execute(const std::shared_ptr<GoalHandleDrive> goal_handle) {
     action_active_ = true;  // Indicate action is active
