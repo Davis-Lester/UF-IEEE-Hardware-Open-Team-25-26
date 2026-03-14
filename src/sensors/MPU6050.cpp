@@ -44,63 +44,81 @@ MPU6050::~MPU6050()
 int MPU6050::initialize()
 {
     std::lock_guard<std::mutex> lock(i2c_mutex_);
-
+    
+    // Open I2C device
     char path[64];
     snprintf(path, sizeof(path), "/dev/i2c-%d", i2c_bus_);
-
+    
     fd_ = open(path, O_RDWR);
     if (fd_ < 0) {
-        fprintf(stderr, "[MPU6050] ERROR: Failed to open %s (errno %d: %s)\n", path, errno, strerror(errno));
         return -1;
     }
-    fprintf(stderr, "[MPU6050] Opened %s OK\n", path);
-
+    
+    // Set I2C slave address to 0x68
+    // IMPORTANT: AD0 pin must be connected to GND for address 0x68
     if (ioctl(fd_, I2C_SLAVE, MPU6050_ADDR) < 0) {
-        fprintf(stderr, "[MPU6050] ERROR: ioctl I2C_SLAVE 0x%02X failed (errno %d: %s)\n", MPU6050_ADDR, errno, strerror(errno));
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-    fprintf(stderr, "[MPU6050] ioctl address 0x%02X OK\n", MPU6050_ADDR);
-
+    
+    // Verify device identity (readRegister is called, which needs lock)
     uint8_t who_am_i_value;
     if (readRegister(WHO_AM_I, &who_am_i_value) != 0) {
-        fprintf(stderr, "[MPU6050] ERROR: WHO_AM_I read failed\n");
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-    fprintf(stderr, "[MPU6050] WHO_AM_I = 0x%02X\n", who_am_i_value);
-
+    // Accept both genuine (0x68) and clone (0x40) chips
     if (who_am_i_value != 0x68 && who_am_i_value != 0x40) {
-        fprintf(stderr, "[MPU6050] ERROR: Unexpected WHO_AM_I value 0x%02X\n", who_am_i_value);
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-
+    
+    // Wake up MPU6050 (write 0x00 to PWR_MGMT_1)
+    // This clears the sleep bit and selects internal 8MHz oscillator as clock source
     if (writeRegister(PWR_MGMT_1, 0x00) != 0) {
-        fprintf(stderr, "[MPU6050] ERROR: PWR_MGMT_1 write failed\n");
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-    fprintf(stderr, "[MPU6050] PWR_MGMT_1 OK\n");
-
+    
+    // Set sample rate divider to 19 for ~50Hz
+    // Sample rate = 1kHz / (1 + SMPLRT_DIV) = 1000 / (1 + 19) = 50 Hz
     if (writeRegister(SMPLRT_DIV, 19) != 0) {
-        fprintf(stderr, "[MPU6050] ERROR: SMPLRT_DIV write failed\n");
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-
+    
+    // Configure DLPF (CONFIG register = 0x02)
+    // DLPF_CFG = 2 provides ~50Hz bandwidth
     if (writeRegister(CONFIG, DLPF_CFG_2) != 0) {
-        fprintf(stderr, "[MPU6050] ERROR: CONFIG write failed\n");
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-
+    
+    // Set gyro range to ±500°/s (GYRO_CONFIG = 0x08)
+    // FS_SEL = 1 (bits 4:3 = 01) sets ±500°/s range
     if (writeRegister(GYRO_CONFIG, FS_SEL_500) != 0) {
-        fprintf(stderr, "[MPU6050] ERROR: GYRO_CONFIG write failed\n");
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-
+    
+    // Set accel range to ±4g (ACCEL_CONFIG = 0x08)
+    // AFS_SEL = 1 (bits 4:3 = 01) sets ±4g range
     if (writeRegister(ACCEL_CONFIG, AFS_SEL_4G) != 0) {
-        fprintf(stderr, "[MPU6050] ERROR: ACCEL_CONFIG write failed\n");
-        close(fd_); fd_ = -1; return -1;
+        close(fd_);
+        fd_ = -1;
+        return -1;
     }
-
+    
+    // Wait 100ms for sensor to stabilize
     usleep(100000);
-    fprintf(stderr, "[MPU6050] Init complete\n");
+    
     return 0;
 }
 
@@ -131,12 +149,10 @@ int MPU6050::calibrate(int samples)
         {
             std::lock_guard<std::mutex> lock(i2c_mutex_);
             
-            // Read raw accelerometer registers directly
             if (readRegisters(ACCEL_XOUT_H, accel_buffer, 6) != 0) {
                 return -1;
             }
             
-            // Read raw gyroscope registers directly
             if (readRegisters(GYRO_XOUT_H, gyro_buffer, 6) != 0) {
                 return -1;
             }
@@ -157,30 +173,28 @@ int MPU6050::calibrate(int samples)
         gyro_sum_y += gy_raw;
         gyro_sum_z += gz_raw;
         
-        // Small delay between samples
-        usleep(2000); // 2ms delay
+        usleep(2000); // 2ms delay between samples
     }
     
     // Calculate average raw values
     int16_t accel_avg_x = static_cast<int16_t>(accel_sum_x / samples);
     int16_t accel_avg_y = static_cast<int16_t>(accel_sum_y / samples);
     int16_t accel_avg_z = static_cast<int16_t>(accel_sum_z / samples);
-    int16_t gyro_avg_x = static_cast<int16_t>(gyro_sum_x / samples);
-    int16_t gyro_avg_y = static_cast<int16_t>(gyro_sum_y / samples);
-    int16_t gyro_avg_z = static_cast<int16_t>(gyro_sum_z / samples);
+    int16_t gyro_avg_x  = static_cast<int16_t>(gyro_sum_x / samples);
+    int16_t gyro_avg_y  = static_cast<int16_t>(gyro_sum_y / samples);
+    int16_t gyro_avg_z  = static_cast<int16_t>(gyro_sum_z / samples);
     
     // Calculate offsets (thread-safe update)
     // For accelerometer: X and Y should read 0g when level, Z should read +1g
     // For ±4g range: +1g = +8192 LSB
-    // So Z offset = average - 8192 (to make calibrated Z read +1g)
     {
         std::lock_guard<std::mutex> lock(i2c_mutex_);
-        accel_offset_x_ = accel_avg_x;  // Zero out X (should read 0g)
-        accel_offset_y_ = accel_avg_y;  // Zero out Y (should read 0g)
-        accel_offset_z_ = accel_avg_z - static_cast<int16_t>(ACCEL_SENSITIVITY_4G);  // Z should read +1g
-        gyro_offset_x_ = gyro_avg_x;    // Zero out X (at rest, no rotation)
-        gyro_offset_y_ = gyro_avg_y;    // Zero out Y (at rest, no rotation)
-        gyro_offset_z_ = gyro_avg_z;    // Zero out Z (at rest, no rotation)
+        accel_offset_x_ = accel_avg_x;
+        accel_offset_y_ = accel_avg_y;
+        accel_offset_z_ = accel_avg_z - static_cast<int16_t>(ACCEL_SENSITIVITY_4G);
+        gyro_offset_x_  = gyro_avg_x;
+        gyro_offset_y_  = gyro_avg_y;
+        gyro_offset_z_  = gyro_avg_z;
     }
     
     return 0;
@@ -289,13 +303,12 @@ int MPU6050::readAll(float* ax_g, float* ay_g, float* az_g,
             return -1;
         }
         
-        // Copy offsets while holding lock
         accel_off_x = accel_offset_x_;
         accel_off_y = accel_offset_y_;
         accel_off_z = accel_offset_z_;
-        gyro_off_x = gyro_offset_x_;
-        gyro_off_y = gyro_offset_y_;
-        gyro_off_z = gyro_offset_z_;
+        gyro_off_x  = gyro_offset_x_;
+        gyro_off_y  = gyro_offset_y_;
+        gyro_off_z  = gyro_offset_z_;
     }
     
     // Parse accelerometer data (bytes 0-5)
@@ -304,11 +317,10 @@ int MPU6050::readAll(float* ax_g, float* ay_g, float* az_g,
     int16_t az = combineBytes(buffer[4], buffer[5]) - accel_off_z;
     
     // Parse gyroscope data (bytes 8-13, skipping temperature bytes at 6-7)
-    int16_t gx = combineBytes(buffer[8], buffer[9]) - gyro_off_x;
+    int16_t gx = combineBytes(buffer[8],  buffer[9])  - gyro_off_x;
     int16_t gy = combineBytes(buffer[10], buffer[11]) - gyro_off_y;
     int16_t gz = combineBytes(buffer[12], buffer[13]) - gyro_off_z;
     
-    // Convert to physical units
     if (ax_g) *ax_g = static_cast<float>(ax) / ACCEL_SENSITIVITY_4G;
     if (ay_g) *ay_g = static_cast<float>(ay) / ACCEL_SENSITIVITY_4G;
     if (az_g) *az_g = static_cast<float>(az) / ACCEL_SENSITIVITY_4G;
@@ -378,12 +390,10 @@ int MPU6050::readRegisters(uint8_t reg, uint8_t* buffer, uint8_t length)
         return -1;
     }
     
-    // Write register address
     if (write(fd_, &reg, 1) != 1) {
         return -1;
     }
     
-    // Read data
     if (read(fd_, buffer, length) != length) {
         return -1;
     }
@@ -395,4 +405,3 @@ int16_t MPU6050::combineBytes(uint8_t hi, uint8_t lo)
 {
     return static_cast<int16_t>((static_cast<uint16_t>(hi) << 8) | static_cast<uint16_t>(lo));
 }
-

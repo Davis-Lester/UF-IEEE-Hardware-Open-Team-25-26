@@ -18,8 +18,7 @@
 #include <mutex>
 
 // MPU6050 IMU Driver for Raspberry Pi 4
-// NOTE: This board is a clone that uses I2C address 0x40 instead of the
-// standard 0x68. AD0 wiring does not affect address on this variant.
+// IMPORTANT: Connect AD0 pin to GND for I2C address 0x68
 
 class MPU6050 {
 public:
@@ -64,9 +63,8 @@ private:
     int16_t combineBytes(uint8_t hi, uint8_t lo);
     
     // MPU6050 Register Addresses
-    // CHANGED: 0x40 is the I2C bus address of the clone chip on this board.
-    // The standard genuine MPU6050 address is 0x68 (AD0=GND) or 0x69 (AD0=VCC).
-    static constexpr uint8_t MPU6050_ADDR = 0x40;
+    // Standard I2C address: 0x68 (AD0=GND) or 0x69 (AD0=VCC)
+    static constexpr uint8_t MPU6050_ADDR = 0x68;
     static constexpr uint8_t PWR_MGMT_1   = 0x6B;
     static constexpr uint8_t SMPLRT_DIV   = 0x19;
     static constexpr uint8_t CONFIG       = 0x1A;
@@ -82,7 +80,7 @@ private:
     static constexpr uint8_t FS_SEL_500 = 0x08;  // ±500°/s range
     
     // Conversion factors (from datasheet)
-    static constexpr float ACCEL_SENSITIVITY_4G   = 8192.0f;
+    static constexpr float ACCEL_SENSITIVITY_4G    = 8192.0f;
     static constexpr float GYRO_SENSITIVITY_500DPS = 65.5f;
 };
 
