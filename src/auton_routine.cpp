@@ -49,10 +49,10 @@ AutonRoutine::AutonRoutine() : Node("auton_routine") {
         std::chrono::milliseconds(100),
         std::bind(&AutonRoutine::intake_publish_callback, this));
 
-    camera_tilt_ = std::make_shared<Hardware::CameraLiftController>(1, 0x40);
-    if (!camera_tilt_->initialize()) {
+    camera_lift_ = std::make_shared<Hardware::CameraLiftController>(1, 0x40);
+    if (!camera_lift_->initialize()) {
         RCLCPP_WARN(this->get_logger(), "Camera lift controller init failed; lift commands will be no-op");
-        camera_tilt_.reset();
+        camera_lift_.reset();
     }
 }
 
@@ -178,18 +178,18 @@ void AutonRoutine::run_routine() {
         ~RunScopeGuard() {
             if (!active) return;
             self->set_intake(0);
-            if (self->camera_tilt_) {
+            if (self->camera_lift_) {
                 RCLCPP_INFO(self->get_logger(), "Camera lift: moving down (scope guard)");
-                self->camera_tilt_->liftDown(CAMERA_LIFT_MOVEMENT_MS);
+                self->camera_lift_->liftDown(CAMERA_LIFT_MOVEMENT_MS);
             }
             RCLCPP_INFO(self->get_logger(), "Auton routine cleanup complete (scope guard)");
         }
         void dismiss() { active = false; }
     } guard(this);
 
-    if (camera_tilt_) {
+    if (camera_lift_) {
         RCLCPP_INFO(this->get_logger(), "Camera lift: moving up");
-        camera_tilt_->liftUp(CAMERA_LIFT_MOVEMENT_MS);
+        camera_lift_->liftUp(CAMERA_LIFT_MOVEMENT_MS);
     }
 
     // 1. Drive Forward
@@ -222,9 +222,9 @@ void AutonRoutine::run_routine() {
 
     // Success path: keep the same safe state
     set_intake(0);
-    if (camera_tilt_) {
+    if (camera_lift_) {
         RCLCPP_INFO(this->get_logger(), "Camera lift: moving down");
-        camera_tilt_->liftDown(CAMERA_LIFT_MOVEMENT_MS);
+        camera_lift_->liftDown(CAMERA_LIFT_MOVEMENT_MS);
     }
 
     guard.dismiss();

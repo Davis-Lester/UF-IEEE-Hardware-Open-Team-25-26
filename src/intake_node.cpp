@@ -1,125 +1,90 @@
 #include "hardware_team_robot/intake_node.h"
-#include <stdexcept>
-#include <chrono> // Added for time and duration
+#include <chrono>
 
-IntakeNode::IntakeNode() : Node("intake_node"), last_intake_cmd_time_(this->now()) {
-    RCLCPP_INFO(this->get_logger(), "Initializing Intake Node...");
+using namespace std::chrono_literals;
 
-    pca_driver_ = std::make_unique<Hardware::PCA9685Driver>(1, 0x40);
-    if (!pca_driver_->initialize()) {
-        RCLCPP_FATAL(this->get_logger(), "PCA9685 initialization failed for IntakeNode");
-        throw std::runtime_error("PCA9685 initialization failed");
-    }
+IntakeNode::IntakeNode() : Node("intake_node"), last_intake_cmd_time_(this->now()), current_state_(0) {
+    RCLCPP_INFO(this->get_logger(), "Initializing Intake Logic Node...");
 
-    // Safety: Ensure the motor is strictly off at startup
-    stop_intake();
-
-    // Reinstated the transient_local QoS for startup reliability
+    // QoS for reliability
     rclcpp::QoS intake_qos(10);
     intake_qos.transient_local();
     intake_qos.reliable();
 
+    // Subscriber: Listen for raw commands from UI/Teleop
     intake_sub_ = this->create_subscription<std_msgs::msg::Int8>(
-        "/intake_cmd", intake_qos,
+        "/intake_cmd", 10,
         std::bind(&IntakeNode::intake_callback, this, std::placeholders::_1)
     );
 
+    // Publisher: Send validated commands to the Hardware/Chassis node
+    intake_pub_ = this->create_publisher<std_msgs::msg::Int8>("/intake_cmd_validated", intake_qos);
+
     // Watchdog Timer: Checks every 500ms
     watchdog_timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(500),
+        500ms,
         std::bind(&IntakeNode::watchdog_callback, this)
     );
 
-    RCLCPP_INFO(this->get_logger(), "Intake Node ready and listening on /intake_cmd");
+    RCLCPP_INFO(this->get_logger(), "Intake Logic Node ready. Filtering /intake_cmd -> /intake_cmd_validated");
 }
 
 IntakeNode::~IntakeNode() {
-    RCLCPP_WARN(this->get_logger(), "Shutting down Intake Node. Stopping motor.");
-    
-    // Safety: Guarantee motor stops if node crashes or is killed
-    stop_intake();
-    
-    // Release PCA9685 resources via RAII
-    pca_driver_.reset();
+    // Verify ROS context and publisher are still valid before attempting to publish
+    if (rclcpp::ok() && intake_pub_) {
+        RCLCPP_WARN(this->get_logger(), "Shutting down Intake Node. Sending safety stop.");
+        publish_validated_state(0);
+    } else {
+        // Fallback warning using standard error since ROS logging might be offline
+        std::cerr << "[IntakeNode WARNING] ROS context invalid or publisher uninitialized. Safety stop could not be guaranteed!" << std::endl;
+    }
 }
 
 void IntakeNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
-    // Reset the watchdog timer on every received command
+    // Reset the watchdog timer timestamp
+    last_intake_cmd_time_ = this->now();
+    const auto state = msg->data;
+    if (state < -1 || state > 1) {
+        RCLCPP_WARN(this->get_logger(), "Rejecting invalid intake state: %d", state);
+        return;
+    }
     last_intake_cmd_time_ = this->now();
     
-    // Pass the requested state directly to the hardware logic
-    set_intake_hardware(msg->data);
+    // Logic: Only publish if the state has actually changed to save bandwidth
+    if (state != current_state_) {
+        publish_validated_state(state);
+    }
 }
 
 void IntakeNode::watchdog_callback() {
-    // If more than 1.0 second has passed since the last command, auto-stop
-    if ((this->now() - last_intake_cmd_time_).seconds() > 1.0) {
-        // Call set_intake_hardware(0) so the static current_state updates correctly.
-        // If it is already 0, the function will safely ignore it.
-        set_intake_hardware(0);
+    // Safety: If no command received for > 1.0 second, force state to 0 (Off)
+    auto since_last_cmd = (this->now() - last_intake_cmd_time_).seconds();
+    
+    if (since_last_cmd > 1.0 && current_state_ != 0) {
+        RCLCPP_WARN(this->get_logger(), "Watchdog timeout! Stopping intake.");
+        publish_validated_state(0);
     }
 }
 
-void IntakeNode::set_intake_hardware(int state) {
-    // Track the current state to detect hard reversals
-    static int current_state = 0;
-
-    // Ignore redundant commands to prevent unnecessary hardware writes
-    if (state == current_state) {
-        return;
-    }
-
-    switch (state) {
-        case 1:  // Forward / Intake On
-            RCLCPP_INFO(this->get_logger(), "Intake: FORWARD");
-            
-            // Safety: Cut power first if transitioning directly from reverse
-            if (current_state == -1) {
-                pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 4096);
-            }
-
-            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 3072);
-            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 4096);
-            break;
-            
-        case -1: // Reverse / Outtake
-            RCLCPP_INFO(this->get_logger(), "Intake: REVERSE");
-            
-            // Safety: Cut power first if transitioning directly from forward
-            if (current_state == 1) {
-                pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 4096);
-            }
-
-            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 4096);
-            pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 3072);
-            break;
-            
-        case 0:  // Explicit Off command
-        default: // Failsafe for unexpected data
-            stop_intake();
-            break;
+void IntakeNode::publish_validated_state(int state) {
+    current_state_ = state;
+    auto message = std_msgs::msg::Int8();
+    message.data = static_cast<int8_t>(state);
+    
+   // Extra safety guard just in case
+    if (intake_pub_) {
+        intake_pub_->publish(message);
     }
     
-    // Update the tracker
-    current_state = state;
-}
-
-void IntakeNode::stop_intake() {
-    RCLCPP_INFO(this->get_logger(), "Intake: STOPPED");
-    // Immediately cut power to the motor
-    if (pca_driver_) {
-        pca_driver_->setPWM(INTAKE_PWM_CHANNEL_FWD, 0, 4096);
-        pca_driver_->setPWM(INTAKE_PWM_CHANNEL_REV, 0, 4096);
-    }
+    // Log the transition
+    if (state == 1) RCLCPP_INFO(this->get_logger(), "State: FORWARD");
+    else if (state == -1) RCLCPP_INFO(this->get_logger(), "State: REVERSE");
+    else RCLCPP_INFO(this->get_logger(), "State: STOPPED");
 }
 
 int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
-    
-    // Create and spin the node
-    auto node = std::make_shared<IntakeNode>();
-    rclcpp::spin(node);
-    
+    rclcpp::spin(std::make_shared<IntakeNode>());
     rclcpp::shutdown();
     return 0;
 }
