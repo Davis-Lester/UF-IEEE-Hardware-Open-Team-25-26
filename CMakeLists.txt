@@ -64,10 +64,6 @@ ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs geometry_ms
 
 #Camera Node
 add_executable(camera_node src/camera_node.cpp)
-add_custom_command(TARGET chassis_node POST_BUILD
-    COMMAND sudo chown root:root $<TARGET_FILE:chassis_node>
-    COMMAND sudo chmod u+s $<TARGET_FILE:chassis_node>
-)
 target_link_libraries(camera_node sensor_lib ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
 add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs geometry_msgs)
