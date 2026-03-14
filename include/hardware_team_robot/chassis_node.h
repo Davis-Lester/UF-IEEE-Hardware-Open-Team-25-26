@@ -36,7 +36,7 @@ public:
     ChassisNode();
     ~ChassisNode();
     
-    void handle_encoder_tick(int gpio, int level);
+    //void handle_encoder_tick(int gpio, int level);
     
 private:
     // ROS Action Server & IMU
@@ -74,12 +74,11 @@ private:
     void led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg);
     void intake_callback(const std_msgs::msg::Int8::SharedPtr msg);
 
-    // --- ENCODERS (4 Wheels) ---
-    // Atomic variables for thread-safe ISR access
-    std::atomic<long> fl_ticks_{0}, fr_ticks_{0};
-    std::atomic<long> rl_ticks_{0}, rr_ticks_{0};
+    // // --- ENCODERS (4 Wheels) ---
+    // // Atomic variables for thread-safe ISR access
+    // std::atomic<long> fl_ticks_{0}, fr_ticks_{0};
+    // std::atomic<long> rl_ticks_{0}, rr_ticks_{0};
 
-    void setup_encoders();
     
     // --- MOTORS (4 Wheels) ---
     //_motor_pins();

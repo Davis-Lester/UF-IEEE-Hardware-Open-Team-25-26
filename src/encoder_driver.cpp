@@ -17,8 +17,10 @@ static void pigpio_encoder_callback(int gpio, int level, uint32_t tick, void* us
     }
 }
 
-EncoderDriver::EncoderDriver() {
-    // Register this instance for interrupt routing
+EncoderDriver::EncoderDriver(int fl_a, int fl_b, int fr_a, int fr_b, 
+                             int rl_a, int rl_b, int rr_a, int rr_b) 
+    : fl_encoder_{fl_a, fl_b}, fr_encoder_{fr_a, fr_b}, 
+      rl_encoder_{rl_a, rl_b}, rr_encoder_{rr_a, rr_b} {
     g_encoder_driver_instance = this;
 }
 

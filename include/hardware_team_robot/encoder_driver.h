@@ -59,7 +59,8 @@ namespace Hardware {
 
 class EncoderDriver {
 public:
-    EncoderDriver();
+    EncoderDriver(int fl_a, int fl_b, int fr_a, int fr_b, 
+                  int rl_a, int rl_b, int rr_a, int rr_b);
     ~EncoderDriver();
 
     // Initializes pigpio and registers GPIO interrupts
@@ -89,10 +90,10 @@ private:
     };
 
     // Temporary pin assignments
-    EncoderPins fl_encoder_ = {17, 27};
-    EncoderPins fr_encoder_ = {22, 4};
-    EncoderPins rl_encoder_ = {26, 21};
-    EncoderPins rr_encoder_ = {9, 11};
+    EncoderPins fl_encoder_;
+    EncoderPins fr_encoder_;
+    EncoderPins rl_encoder_;
+    EncoderPins rr_encoder_;
 
     // Indicates driver initialization state
     std::atomic<bool> is_initialized_{false};
