@@ -8,8 +8,8 @@
 #include <thread>
 #include <lgpio.h>
 
-// PWM frequency for RGB LED (Hz)
-static constexpr int RGB_PWM_FREQ = 800;
+// PWM frequency for RGB LED — must be float to match lgTxPwm signature
+static constexpr float RGB_PWM_FREQ = 800.0f;
 
 Hardware::TankOdometry::Pose ChassisNode::getOdometryPose() const {
     if (odometry_) {
@@ -32,10 +32,11 @@ ChassisNode::~ChassisNode() {
     stop_motors();
 
     // Turn off RGB LED and release lgpio handle
+    // lgTxPwm: handle, gpio, freq, duty_cycle, offset, cycleCount
     if (rgb_lgh_ >= 0) {
-        lgTxPwm(rgb_lgh_, RGB_PIN_RED,   RGB_PWM_FREQ, 0.0);
-        lgTxPwm(rgb_lgh_, RGB_PIN_GREEN, RGB_PWM_FREQ, 0.0);
-        lgTxPwm(rgb_lgh_, RGB_PIN_BLUE,  RGB_PWM_FREQ, 0.0);
+        lgTxPwm(rgb_lgh_, RGB_PIN_RED,   RGB_PWM_FREQ, 0.0f, 0, 0);
+        lgTxPwm(rgb_lgh_, RGB_PIN_GREEN, RGB_PWM_FREQ, 0.0f, 0, 0);
+        lgTxPwm(rgb_lgh_, RGB_PIN_BLUE,  RGB_PWM_FREQ, 0.0f, 0, 0);
         lgGpiochipClose(rgb_lgh_);
         rgb_lgh_ = -1;
     }
@@ -100,7 +101,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
         RCLCPP_ERROR(this->get_logger(), "Encoder driver init failed");
     } else {
         RCLCPP_INFO(this->get_logger(), "Encoders initialized");
-        encoder_ready_ = true;  // Set flag for handle_goal gating
+        encoder_ready_ = true;
     }
 
     // --- RGB LED via lgpio (separate chip handle from encoder_driver) ---
@@ -119,9 +120,11 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
             lgGpiochipClose(rgb_lgh_);
             rgb_lgh_ = -1;
         } else {
-            lgTxPwm(rgb_lgh_, RGB_PIN_RED,   RGB_PWM_FREQ, 0.0);
-            lgTxPwm(rgb_lgh_, RGB_PIN_GREEN, RGB_PWM_FREQ, 0.0);
-            lgTxPwm(rgb_lgh_, RGB_PIN_BLUE,  RGB_PWM_FREQ, 0.0);
+            // Start with LED off
+            // lgTxPwm: handle, gpio, freq, duty_cycle, offset, cycleCount
+            lgTxPwm(rgb_lgh_, RGB_PIN_RED,   RGB_PWM_FREQ, 0.0f, 0, 0);
+            lgTxPwm(rgb_lgh_, RGB_PIN_GREEN, RGB_PWM_FREQ, 0.0f, 0, 0);
+            lgTxPwm(rgb_lgh_, RGB_PIN_BLUE,  RGB_PWM_FREQ, 0.0f, 0, 0);
             RCLCPP_INFO(this->get_logger(), "RGB LED GPIO ready");
         }
     }
@@ -142,7 +145,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
     if (imu_.initialize() == 0) {
         RCLCPP_INFO(this->get_logger(), "IMU Calibrating...");
         imu_.calibrate(500);
-        imu_ready_ = true;  // Set flag for handle_goal gating
+        imu_ready_ = true;
     } else {
         RCLCPP_ERROR(this->get_logger(), "IMU initialization failed");
     }
@@ -165,15 +168,16 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
     stop_motors();
 }
 
-// ColorRGBA uses 0.0–1.0 floats; lgTxPwm wants 0.0–100.0 duty cycle
+// ColorRGBA uses 0.0–1.0 floats; lgTxPwm duty cycle is 0.0–100.0
+// lgTxPwm: handle, gpio, freq, duty_cycle, offset, cycleCount
 void ChassisNode::led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg) {
     if (rgb_lgh_ < 0) return;
-    auto to_duty = [](float c) -> double {
-        return static_cast<double>(std::clamp(c, 0.0f, 1.0f)) * 100.0;
+    auto to_duty = [](float c) -> float {
+        return std::clamp(c, 0.0f, 1.0f) * 100.0f;
     };
-    lgTxPwm(rgb_lgh_, RGB_PIN_RED,   RGB_PWM_FREQ, to_duty(msg->r));
-    lgTxPwm(rgb_lgh_, RGB_PIN_GREEN, RGB_PWM_FREQ, to_duty(msg->g));
-    lgTxPwm(rgb_lgh_, RGB_PIN_BLUE,  RGB_PWM_FREQ, to_duty(msg->b));
+    lgTxPwm(rgb_lgh_, RGB_PIN_RED,   RGB_PWM_FREQ, to_duty(msg->r), 0, 0);
+    lgTxPwm(rgb_lgh_, RGB_PIN_GREEN, RGB_PWM_FREQ, to_duty(msg->g), 0, 0);
+    lgTxPwm(rgb_lgh_, RGB_PIN_BLUE,  RGB_PWM_FREQ, to_duty(msg->b), 0, 0);
 }
 
 void ChassisNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
