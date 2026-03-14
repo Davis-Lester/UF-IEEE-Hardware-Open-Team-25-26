@@ -78,8 +78,13 @@ void ChassisNode::odometry_update_loop() {
             odometry_->update(fl, fr, rl, rr, heading_rad);
         } 
         
-        // REMOVED: VEML7700 Start Light Detection
-        // Start light detection now handled by camera_node
+        // Explicitly turn off the RGB LED before shutting down
+        gpioPWM(RGB_PIN_RED, 0);
+        gpioPWM(RGB_PIN_GREEN, 0);
+        gpioPWM(RGB_PIN_BLUE, 0);
+
+        // Explicitly stop motors on shutdown
+        stop_motors();
         
         loop_rate.sleep();
     }
@@ -362,6 +367,12 @@ void ChassisNode::handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_ha
 }
 
 int main(int argc, char * argv[]) {
+    // 1. Tell pigpio to ignore Ctrl+C and let ROS 2 handle it
+    int cfg = gpioCfgGetInternals();
+    cfg |= PI_CFG_NOSIGHANDLER;
+    gpioCfgSetInternals(cfg);
+
+    // 2. Standard ROS 2 startup
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<ChassisNode>());
     rclcpp::shutdown();
