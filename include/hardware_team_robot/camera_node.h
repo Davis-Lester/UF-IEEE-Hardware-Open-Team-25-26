@@ -37,7 +37,6 @@ public:
     using GoalHandleFindColor = rclcpp_action::ServerGoalHandle<FindColor>;
 
     CameraProcessor();
-    ~CameraProcessor();
 
 private:
     // Publisher for RGB LED color control
