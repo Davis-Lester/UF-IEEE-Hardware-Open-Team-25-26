@@ -69,7 +69,7 @@ int MPU6050::initialize()
         fd_ = -1;
         return -1;
     }
-    if (who_am_i_value != 0x68) {
+    if (who_am_i_value != 0x68 && who_am_i_value != 0x40) {
         close(fd_);
         fd_ = -1;
         return -1;
@@ -337,9 +337,9 @@ int MPU6050::readAll(float* ax_g, float* ay_g, float* az_g,
     return 0;
 }
 
-bool MPU6050::testConnection()
-{
-    return (whoAmI() == 0x68);
+bool MPU6050::testConnection() {
+    int id = whoAmI();
+    return (id == 0x68 || id == 0x40);
 }
 
 int MPU6050::whoAmI()
