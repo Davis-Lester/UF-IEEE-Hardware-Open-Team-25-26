@@ -12,7 +12,7 @@
 #include "std_msgs/msg/color_rgba.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "std_msgs/msg/int8.hpp"
-#include <pigpio.h>
+#include <lgpio.h>
 #include <atomic>
 #include <thread>
 #include <mutex> 

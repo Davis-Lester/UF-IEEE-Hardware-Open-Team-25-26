@@ -3,7 +3,7 @@
 
 #include <atomic>
 #include <cstdint>
-#include <pigpio.h>
+#include <lgpio.h>
 
 // GPIO PIN CONFIGURATION
 // NOTE: Pin numbers below are temporary placeholders.

@@ -17,10 +17,10 @@ find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
-find_library(PIGPIO_LIB pigpio REQUIRED)
+find_library(LGPIO_LIB lgpio REQUIRED)
 find_library(I2C_LIB i2c REQUIRED)
 
-# define Drive action
+# Define Drive and FindColor actions
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Drive.action"
   "action/FindColor.action"
@@ -28,7 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 
 # Create library for sensors
-add_library(sensor_lib SHARED 
+add_library(sensor_lib SHARED
     src/sensors/MPU6050.cpp
     src/odometry.cpp
     src/navigation_controller.cpp
@@ -44,7 +44,7 @@ target_include_directories(sensor_lib PUBLIC
 )
 ament_target_dependencies(sensor_lib rclcpp rclcpp_action std_msgs sensor_msgs nav_msgs geometry_msgs)
 add_dependencies(sensor_lib ${PROJECT_NAME}__rosidl_generator_cpp)
-target_link_libraries(sensor_lib ${I2C_LIB} ${PIGPIO_LIB})
+target_link_libraries(sensor_lib ${I2C_LIB} ${LGPIO_LIB})
 
 rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
 add_dependencies(sensor_lib ${cpp_typesupport_target})
@@ -55,37 +55,33 @@ target_link_libraries(auton_node sensor_lib "${cpp_typesupport_target}")
 add_dependencies(auton_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(auton_node rclcpp rclcpp_action std_msgs geometry_msgs)
 
-#Chassis Node needs to be fixed
+# Chassis Node
 add_executable(chassis_node src/chassis_node.cpp)
-target_link_libraries(chassis_node sensor_lib ${PIGPIO_LIB} "${cpp_typesupport_target}")
+target_link_libraries(chassis_node sensor_lib ${LGPIO_LIB} "${cpp_typesupport_target}")
 add_dependencies(chassis_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(chassis_node rclcpp rclcpp_action std_msgs geometry_msgs)
 
-
-#Camera Node
+# Camera Node
 add_executable(camera_node src/camera_node.cpp)
 target_link_libraries(camera_node sensor_lib ${OpenCV_LIBRARIES} "${cpp_typesupport_target}")
 add_dependencies(camera_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(camera_node rclcpp rclcpp_action std_msgs cv_bridge sensor_msgs geometry_msgs)
 
-
-# Intake Control Node (no pigpio or PCA9685 dependencies)
+# Intake Control Node (no lgpio or PCA9685 dependencies — pure relay node)
 add_executable(intake_node src/intake_node.cpp)
 target_link_libraries(intake_node sensor_lib "${cpp_typesupport_target}")
 add_dependencies(intake_node ${PROJECT_NAME}__rosidl_generator_cpp)
 ament_target_dependencies(intake_node rclcpp std_msgs)
 
-# Keypad Servo node
+# Keypad Servo node (disabled)
 # add_executable(keypad_servo_node src/keypad_servo_node.cpp)
 # ament_target_dependencies(keypad_servo_node rclcpp std_msgs)
-# target_link_libraries(keypad_servo_node sensor_lib ${PIGPIO_LIB})
+# target_link_libraries(keypad_servo_node sensor_lib ${LGPIO_LIB})
 
 install(TARGETS
   auton_node
   chassis_node
   camera_node
-  # ir_node
-  # keypad_servo_node
   intake_node
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -96,7 +92,6 @@ install(TARGETS sensor_lib
   RUNTIME DESTINATION bin
 )
 
-# This ensures your headers are copied to the install space
 install(DIRECTORY include/
   DESTINATION include/
 )
@@ -104,4 +99,5 @@ install(DIRECTORY include/
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
+
 ament_package()
