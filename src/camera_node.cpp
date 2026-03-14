@@ -1,12 +1,6 @@
 #include "hardware_team_robot/camera_node.h"
-#include <pigpio.h>
 
 CameraProcessor::CameraProcessor() : Node("camera_processor") {
-    if (gpioInitialise() < 0) {
-        RCLCPP_FATAL(this->get_logger(), "pigpio initialization failed for RGB LED");
-        throw std::runtime_error("pigpio initialization failed");
-    }
-
     // Subscribe to RGB LED color commands
     
     // 2. Publisher for start light detection
@@ -204,5 +198,4 @@ int main(int argc, char ** argv)
   
   rclcpp::spin(node);
   rclcpp::shutdown();
-  gpioTerminate();
 }
