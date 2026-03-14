@@ -379,7 +379,7 @@ int main(int argc, char * argv[]) {
 
     // 2. Initialize the library
     if (gpioInitialise() < 0) {
-        std::cerr << "FATAL: pigpio initialization failed. Are you root?\n";
+        std::cerr << "FATAL: pigpio initialization failed.";
         return 1;
     }
 
