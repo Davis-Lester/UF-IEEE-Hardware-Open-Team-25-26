@@ -4,21 +4,14 @@
 
 namespace Hardware {
 
-// Global instance pointer used by lgpio alert callbacks.
-// lgpio expects C-style functions, so this provides a bridge
-// back into the class-based handler.
-static EncoderDriver* g_encoder_driver_instance = nullptr;
-
-// C-style alert callback required by lgpio.
-// lgpio batches alerts — loop through all of them.
-// Signature is fixed by lgpio: (int num_alerts, lgGpioAlert_p alerts, void* userdata)
-static void lgpio_encoder_callback(int num_alerts, lgGpioAlert_p alerts, void* userdata) {
-    if (!g_encoder_driver_instance) return;
-    for (int i = 0; i < num_alerts; i++) {
-        g_encoder_driver_instance->handleEncoderTick(
-            alerts[i].report.gpio,
-            alerts[i].report.level
-        );
+// Static class adapter — routes lgpio alerts back to the instance.
+// Uses userdata instead of a global singleton so multiple instances
+// could coexist, and keeps handleEncoderTick accessible as a class member.
+void EncoderDriver::handleEncoderTickStatic(int num_alerts, lgGpioAlert_p alerts, void* userdata) {
+    auto* self = static_cast<EncoderDriver*>(userdata);
+    if (!self) return;
+    for (int i = 0; i < num_alerts; ++i) {
+        self->handleEncoderTick(alerts[i].report.gpio, alerts[i].report.level);
     }
 }
 
@@ -27,7 +20,6 @@ EncoderDriver::EncoderDriver(int fl_a, int fl_b, int fr_a, int fr_b,
     : fl_encoder_{fl_a, fl_b}, fr_encoder_{fr_a, fr_b},
       rl_encoder_{rl_a, rl_b}, rr_encoder_{rr_a, rr_b},
       lgh_(-1) {
-    g_encoder_driver_instance = this;
 }
 
 EncoderDriver::~EncoderDriver() {
@@ -35,7 +27,6 @@ EncoderDriver::~EncoderDriver() {
 }
 
 int EncoderDriver::initialize() {
-    // Prevent duplicate initialization
     if (is_initialized_.load()) {
         return 0;
     }
@@ -65,12 +56,12 @@ int EncoderDriver::initialize() {
         }
     }
 
-    // Register the single shared callback function for all alert pins
-    // Must be done before claiming alert lines
-    lgGpioSetAlertsFunc(lgh_, fl_encoder_.channel_a, lgpio_encoder_callback, (void*)this);
-    lgGpioSetAlertsFunc(lgh_, fr_encoder_.channel_a, lgpio_encoder_callback, (void*)this);
-    lgGpioSetAlertsFunc(lgh_, rl_encoder_.channel_a, lgpio_encoder_callback, (void*)this);
-    lgGpioSetAlertsFunc(lgh_, rr_encoder_.channel_a, lgpio_encoder_callback, (void*)this);
+    // Register the static class adapter as the alert callback for all Channel A pins.
+    // userdata = this so handleEncoderTickStatic can route back to the instance.
+    lgGpioSetAlertsFunc(lgh_, fl_encoder_.channel_a, EncoderDriver::handleEncoderTickStatic, (void*)this);
+    lgGpioSetAlertsFunc(lgh_, fr_encoder_.channel_a, EncoderDriver::handleEncoderTickStatic, (void*)this);
+    lgGpioSetAlertsFunc(lgh_, rl_encoder_.channel_a, EncoderDriver::handleEncoderTickStatic, (void*)this);
+    lgGpioSetAlertsFunc(lgh_, rr_encoder_.channel_a, EncoderDriver::handleEncoderTickStatic, (void*)this);
 
     // Claim alert lines on Channel A pins (rising edge only for 1x decoding)
     int ret = 0;
@@ -78,33 +69,25 @@ int EncoderDriver::initialize() {
     ret = lgGpioClaimAlert(lgh_, 0, LG_RISING_EDGE, fl_encoder_.channel_a, -1);
     if (ret < 0) {
         fprintf(stderr, "[EncoderDriver] ERROR: FL alert claim failed (error %d)\n", ret);
-        lgGpiochipClose(lgh_);
-        lgh_ = -1;
-        return -1;
+        lgGpiochipClose(lgh_); lgh_ = -1; return -1;
     }
 
     ret = lgGpioClaimAlert(lgh_, 0, LG_RISING_EDGE, fr_encoder_.channel_a, -1);
     if (ret < 0) {
         fprintf(stderr, "[EncoderDriver] ERROR: FR alert claim failed (error %d)\n", ret);
-        lgGpiochipClose(lgh_);
-        lgh_ = -1;
-        return -1;
+        lgGpiochipClose(lgh_); lgh_ = -1; return -1;
     }
 
     ret = lgGpioClaimAlert(lgh_, 0, LG_RISING_EDGE, rl_encoder_.channel_a, -1);
     if (ret < 0) {
         fprintf(stderr, "[EncoderDriver] ERROR: RL alert claim failed (error %d)\n", ret);
-        lgGpiochipClose(lgh_);
-        lgh_ = -1;
-        return -1;
+        lgGpiochipClose(lgh_); lgh_ = -1; return -1;
     }
 
     ret = lgGpioClaimAlert(lgh_, 0, LG_RISING_EDGE, rr_encoder_.channel_a, -1);
     if (ret < 0) {
         fprintf(stderr, "[EncoderDriver] ERROR: RR alert claim failed (error %d)\n", ret);
-        lgGpiochipClose(lgh_);
-        lgh_ = -1;
-        return -1;
+        lgGpiochipClose(lgh_); lgh_ = -1; return -1;
     }
 
     is_initialized_.store(true);
@@ -112,7 +95,7 @@ int EncoderDriver::initialize() {
     return 0;
 }
 
-// Atomic reads are lock-free and ISR-safe
+// Atomic reads are lock-free and alert-safe
 int32_t EncoderDriver::getFrontLeftTicks()  const { return fl_ticks_.load(); }
 int32_t EncoderDriver::getFrontRightTicks() const { return fr_ticks_.load(); }
 int32_t EncoderDriver::getRearLeftTicks()   const { return rl_ticks_.load(); }
@@ -137,26 +120,36 @@ void EncoderDriver::cleanup() {
 
 // Determines rotation direction using quadrature phase relationship.
 // Channel B is read at the moment Channel A rises to determine direction.
+// lgGpioRead returns 0/1 on success or a negative error code on failure.
+// Negative returns are treated as no-count to prevent odometry corruption.
 int8_t EncoderDriver::getDirection(int gpio, int level) {
     if (level != 1) return 0;  // Only count on rising edge
 
     if (gpio == fl_encoder_.channel_a) {
-        return (lgGpioRead(lgh_, fl_encoder_.channel_b) == 0) ? 1 : -1;
+        const int value = lgGpioRead(lgh_, fl_encoder_.channel_b);
+        if (value < 0) return 0;
+        return value == 0 ? 1 : -1;
     }
     if (gpio == fr_encoder_.channel_a) {
-        return (lgGpioRead(lgh_, fr_encoder_.channel_b) == 0) ? 1 : -1;
+        const int value = lgGpioRead(lgh_, fr_encoder_.channel_b);
+        if (value < 0) return 0;
+        return value == 0 ? 1 : -1;
     }
     if (gpio == rl_encoder_.channel_a) {
-        return (lgGpioRead(lgh_, rl_encoder_.channel_b) == 0) ? 1 : -1;
+        const int value = lgGpioRead(lgh_, rl_encoder_.channel_b);
+        if (value < 0) return 0;
+        return value == 0 ? 1 : -1;
     }
     if (gpio == rr_encoder_.channel_a) {
-        return (lgGpioRead(lgh_, rr_encoder_.channel_b) == 0) ? 1 : -1;
+        const int value = lgGpioRead(lgh_, rr_encoder_.channel_b);
+        if (value < 0) return 0;
+        return value == 0 ? 1 : -1;
     }
 
     return 0;  // Unexpected GPIO source
 }
 
-// Instance-level alert handler — called from lgpio_encoder_callback
+// Instance-level alert handler — called from handleEncoderTickStatic
 void EncoderDriver::handleEncoderTick(int gpio, int level) {
     if (!is_initialized_.load()) return;
 

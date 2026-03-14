@@ -72,12 +72,11 @@ void ChassisNode::odometry_update_loop() {
         loop_rate.sleep();
     }
 
-    // Safe shutdown on loop exit
     stop_motors();
 }
 
 ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
-    // --- Motor Driver (I2C — no pigpio needed) ---
+    // --- Motor Driver (I2C — no lgpio needed) ---
     motor_driver_ = std::make_shared<Hardware::PCA9685Driver>(1, 0x40);
     if (!motor_driver_->initialize()) {
         RCLCPP_ERROR(this->get_logger(), "PCA9685 Init Failed: %s",
@@ -101,6 +100,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
         RCLCPP_ERROR(this->get_logger(), "Encoder driver init failed");
     } else {
         RCLCPP_INFO(this->get_logger(), "Encoders initialized");
+        encoder_ready_ = true;  // Set flag for handle_goal gating
     }
 
     // --- RGB LED via lgpio (separate chip handle from encoder_driver) ---
@@ -119,7 +119,6 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
             lgGpiochipClose(rgb_lgh_);
             rgb_lgh_ = -1;
         } else {
-            // Start with LED off
             lgTxPwm(rgb_lgh_, RGB_PIN_RED,   RGB_PWM_FREQ, 0.0);
             lgTxPwm(rgb_lgh_, RGB_PIN_GREEN, RGB_PWM_FREQ, 0.0);
             lgTxPwm(rgb_lgh_, RGB_PIN_BLUE,  RGB_PWM_FREQ, 0.0);
@@ -143,6 +142,7 @@ ChassisNode::ChassisNode() : Node("chassis_node"), imu_(1), rgb_lgh_(-1) {
     if (imu_.initialize() == 0) {
         RCLCPP_INFO(this->get_logger(), "IMU Calibrating...");
         imu_.calibrate(500);
+        imu_ready_ = true;  // Set flag for handle_goal gating
     } else {
         RCLCPP_ERROR(this->get_logger(), "IMU initialization failed");
     }
@@ -291,16 +291,27 @@ void ChassisNode::motor_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr 
 
 rclcpp_action::GoalResponse ChassisNode::handle_goal(
     const rclcpp_action::GoalUUID &,
-    std::shared_ptr<const Drive::Goal>)
+    std::shared_ptr<const Drive::Goal> goal)
 {
-    if (!motor_ready_) {
-        RCLCPP_ERROR(this->get_logger(), "Motor driver not ready — rejecting goal");
+    // Check all required hardware is ready based on the requested mode
+    if (!motor_ready_ || !encoder_ready_) {
+        RCLCPP_ERROR(this->get_logger(), "Required hardware not ready — rejecting goal");
         return rclcpp_action::GoalResponse::REJECT;
     }
-    if (execute_thread_.joinable()) {
-        RCLCPP_WARN(this->get_logger(), "Previous action still executing — rejecting goal");
+
+    // TURN mode requires a working IMU
+    if (goal->mode == "TURN" && !imu_ready_) {
+        RCLCPP_ERROR(this->get_logger(), "IMU not ready, cannot execute TURN — rejecting goal");
         return rclcpp_action::GoalResponse::REJECT;
     }
+
+    // Use action_active_ flag instead of joinable() — a finished thread stays
+    // joinable until join() is called, which would permanently block new goals
+    if (action_active_.load()) {
+        RCLCPP_WARN(this->get_logger(), "Another action is still active — rejecting goal");
+        return rclcpp_action::GoalResponse::REJECT;
+    }
+
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
@@ -311,6 +322,7 @@ rclcpp_action::CancelResponse ChassisNode::handle_cancel(
 }
 
 void ChassisNode::handle_accepted(const std::shared_ptr<GoalHandleDrive> goal_handle) {
+    // Join the previous worker thread before launching a new one
     if (execute_thread_.joinable()) {
         execute_thread_.join();
     }

@@ -107,7 +107,8 @@ private:
     // Determines rotation direction using quadrature logic
     int8_t getDirection(int gpio, int level);
 
-    
+    int lgh_{-1};
+    static void handleEncoderTickStatic(int num_alerts, lgGpioAlert_p alerts, void* userdata);
 
     // Instance-level interrupt handler
     void handleEncoderTick(int gpio, int level);

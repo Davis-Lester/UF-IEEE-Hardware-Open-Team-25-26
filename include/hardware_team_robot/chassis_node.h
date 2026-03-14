@@ -74,6 +74,10 @@ private:
     void led_callback(const std_msgs::msg::ColorRGBA::SharedPtr msg);
     void intake_callback(const std_msgs::msg::Int8::SharedPtr msg);
 
+    int rgb_lgh_{-1};
+    bool encoder_ready_{false};
+    bool imu_ready_{false};
+
     // // --- ENCODERS (4 Wheels) ---
     // // Atomic variables for thread-safe ISR access
     // std::atomic<long> fl_ticks_{0}, fr_ticks_{0};
