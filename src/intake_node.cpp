@@ -43,10 +43,16 @@ IntakeNode::~IntakeNode() {
 void IntakeNode::intake_callback(const std_msgs::msg::Int8::SharedPtr msg) {
     // Reset the watchdog timer timestamp
     last_intake_cmd_time_ = this->now();
+    const auto state = msg->data;
+    if (state < -1 || state > 1) {
+        RCLCPP_WARN(this->get_logger(), "Rejecting invalid intake state: %d", state);
+        return;
+    }
+    last_intake_cmd_time_ = this->now();
     
     // Logic: Only publish if the state has actually changed to save bandwidth
-    if (msg->data != current_state_) {
-        publish_validated_state(msg->data);
+    if (state != current_state_) {
+        publish_validated_state(state);
     }
 }
 
