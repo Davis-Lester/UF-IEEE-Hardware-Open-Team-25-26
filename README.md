@@ -27,10 +27,10 @@ The codebase is modular with separated hardware drivers and ROS nodes, ready for
 | **Odometry** | Threaded fusion of encoders and IMU at 100Hz for accurate pose estimation |
 | **Vision Processing** | OpenCV-powered color detection and LED feedback via camera |
 | **Navigation** | PID-controlled coordinate-based movement with real-time adjustments |
-| **Sensor Integration** | Hardware drivers for MPU6050 IMU, VEML7700 light sensor, ultrasonic distance |
+| **Sensor Integration** | Hardware drivers for MPU6050 IMU and PCA9685 I2C to PWM Driver Module |
 | **Autonomous Routines** | Action servers for drive commands and color finding with feedback |
 | **Multithreading** | ROS 2 nodes running concurrently for chassis, camera, intake, and odometry |
-| **Hardware Acceleration** | pigpio library for precise PWM control and sensor interrupts |
+| **Hardware Acceleration** | lgpio library for precise PWM control and sensor interrupts |
 
 ---
 
@@ -102,8 +102,8 @@ $$
 
 | Loop          |    $K_p$ | $K_i$ | $K_d$ | Notes                    |
 | ------------- | -------: | ----: | ----: | ------------------------ |
-| Linear Motion |     TBD  |   TBD |   TBD | Configurable in code     |
-| Heading Hold  |     TBD  |   TBD |   TBD | IMU-based correction     |
+| Linear Motion |     17.4  |   0.0 |   170.0 | Configurable in code     |
+| Heading Hold  |     8.0  |   0.0 |   20.0 | IMU-based correction     |
 
 ---
 
