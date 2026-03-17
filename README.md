@@ -1,5 +1,5 @@
-# Hardware Team Robot - ROS2 Control Stack
-*A modular, multithreaded control stack built with ROS 2 Jazzy for competitive robotics.*
+# IEEE Hardware Open Team Robot - ROS2 Control Stack
+*A modular, multithreaded control stack built with ROS 2 Jazzy for IEEE SoutheastCon 2026.*
 
 [![ROS 2](https://img.shields.io/badge/ROS%202-Jazzy-blue)](https://docs.ros.org/en/jazzy/)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-orange)](https://ubuntu.com/)
@@ -8,7 +8,7 @@
 ---
 
 ## Project Overview
-This repository contains the **competition-ready control stack** for a ROS 2-powered robot that:
+This repository contains the **competition-ready control stack** for the IEEE Hardware Open Team Robot that competed at **IEEE SoutheastCon 2026**, placing **3rd in the Open Team Division**, achieving **80% accuracy in expected score**. The robot is powered by ROS 2 and features:
 * Executes precise **tank drive kinematics** with encoder feedback and IMU fusion
 * Performs **camera-based color detection** and start light sensing for autonomous operations
 * Runs **PID-tuned navigation** with coordinate-based path planning
