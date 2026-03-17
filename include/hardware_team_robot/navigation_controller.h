@@ -61,9 +61,9 @@ private:
     static constexpr float APPROACH_HEADING_SCALE = 0.2f;     // Scale for heading correction during approach
 
     struct PIDController {
-        float kp{1.0f};
+        float kp{17.4f};
         float ki{0.0f};
-        float kd{0.1f};
+        float kd{170.0f};
         float integral{0.0f};
         float last_error{0.0f};
         float output{0.0f};
