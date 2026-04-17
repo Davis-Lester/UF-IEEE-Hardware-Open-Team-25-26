@@ -33,8 +33,9 @@ The codebase is modular with separated hardware drivers and ROS nodes, ready for
 | **Hardware Acceleration** | lgpio library for precise PWM control and sensor interrupts |
 
 ---
-
-![Robot Image](Robot_Image.jpg)
+<p align="center">
+  <img src="robot_image.jpg" width="300" alt="Image of Robot"/>
+</p>
 
 ---
 
