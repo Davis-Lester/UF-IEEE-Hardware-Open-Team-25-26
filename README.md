@@ -34,7 +34,7 @@ The codebase is modular with separated hardware drivers and ROS nodes, ready for
 
 ---
 
-![Robot Image](Robot_Image.png)
+![Robot Image](Robot_Image.jpg)
 
 ---
 
